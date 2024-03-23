@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from 'antd';
-import { Link } from 'react-router-dom';
+import { Link, useHistory } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import styled from 'styled-components';
 import WelcomeHeaderImg from 'ui/assets/welcome-header.svg';
@@ -30,7 +30,12 @@ const Container = styled.div`
 
 const Welcome = () => {
   const { t } = useTranslation();
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2>(2);
+  const history = useHistory();
+
+  useEffect(() => {
+    history.push('/no-address');
+  }, []);
 
   return (
     <Container className="h-full">
