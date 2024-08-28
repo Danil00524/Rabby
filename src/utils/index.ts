@@ -1,6 +1,7 @@
 import { CHAINS } from '@/constant';
 import { keyBy } from 'lodash';
 import browser from 'webextension-polyfill';
+import { findChain } from './chain';
 
 declare global {
   const langLocales: Record<string, Record<'message', string>>;
@@ -14,12 +15,13 @@ const format = (str, ...args) => {
 
 export { t, format };
 
-const chainsDict = keyBy(CHAINS, 'serverId');
 export const getChain = (chainId?: string) => {
   if (!chainId) {
     return null;
   }
-  return chainsDict[chainId];
+  return findChain({
+    serverId: chainId,
+  });
 };
 
 export const getOriginFromUrl = (url: string) => {
@@ -52,6 +54,28 @@ export const resemblesETHAddress = (str: string): boolean => {
 export const getAddressScanLink = (scanLink: string, address: string) => {
   if (/transaction\/_s_/.test(scanLink)) {
     return scanLink.replace(/transaction\/_s_/, `address/${address}`);
+  } else if (/tx\/_s_/.test(scanLink)) {
+    return scanLink.replace(/tx\/_s_/, `address/${address}`);
+  } else {
+    return scanLink.endsWith('/')
+      ? `${scanLink}address/${address}`
+      : `${scanLink}/address/${address}`;
   }
-  return scanLink.replace(/tx\/_s_/, `address/${address}`);
+};
+
+export const getTxScanLink = (scankLink: string, hash: string) => {
+  if (scankLink.includes('_s_')) {
+    return scankLink.replace('_s_', hash);
+  }
+  return scankLink.endsWith('/')
+    ? `${scankLink}tx/${hash}`
+    : `${scankLink}/tx/${hash}`;
+};
+
+export const safeJSONParse = (str: string) => {
+  try {
+    return JSON.parse(str);
+  } catch (err) {
+    return null;
+  }
 };

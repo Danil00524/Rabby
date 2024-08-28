@@ -6,6 +6,7 @@ import { EVENTS } from '@/constant';
 import { is1559Tx } from '@/utils/transaction';
 import { bytesToHex } from 'web3-utils';
 import { ImKeyBridgeInterface } from './imkey-bridge-interface';
+import { signHashHex } from './utils';
 
 const keyringType = 'imKey Hardware';
 const MAX_INDEX = 1000;
@@ -262,29 +263,47 @@ export class EthImKeyKeyring extends EventEmitter {
       const txChainId = getChainId(transaction.common);
       const dataHex = transaction.data.toString('hex');
 
-      const txData = {
-        to: transaction.to!.toString(),
-        value: convertToBigint(transaction.value),
-        data: dataHex === '' ? '' : `0x${dataHex}`,
-        nonce: convertToBigint(transaction.nonce),
-        gasLimit: convertToBigint(transaction.gasLimit),
-        gasPrice:
-          typeof (transaction as Transaction).gasPrice !== 'undefined'
-            ? convertToBigint((transaction as Transaction).gasPrice)
-            : convertToBigint(
-                (transaction as FeeMarketEIP1559Transaction).maxFeePerGas
-              ),
-        chainId: txChainId,
-        path: accountDetail.hdPath,
-      };
+      const txJSON = transaction.toJSON();
+      const is1559 = is1559Tx(txJSON);
+
+      const txData = is1559
+        ? {
+            data: dataHex === '' ? '' : `0x${dataHex}`,
+            gasLimit: convertToBigint(transaction.gasLimit),
+            type: convertToBigint(transaction.type.toString()),
+            accessList: transaction.accessList,
+            maxFeePerGas: convertToBigint(transaction.maxFeePerGas),
+            maxPriorityFeePerGas: convertToBigint(
+              transaction.maxPriorityFeePerGas
+            ),
+            nonce: convertToBigint(transaction.nonce),
+            to: transaction.to!.toString(),
+            value: convertToBigint(transaction.value),
+            chainId: txChainId,
+            path: accountDetail.hdPath,
+          }
+        : {
+            to: transaction.to!.toString(),
+            value: convertToBigint(transaction.value),
+            data: dataHex === '' ? '' : `0x${dataHex}`,
+            nonce: convertToBigint(transaction.nonce),
+            gasLimit: convertToBigint(transaction.gasLimit),
+            gasPrice:
+              typeof (transaction as Transaction).gasPrice !== 'undefined'
+                ? convertToBigint((transaction as Transaction).gasPrice)
+                : convertToBigint(
+                    (transaction as FeeMarketEIP1559Transaction).maxFeePerGas
+                  ),
+            chainId: txChainId,
+            path: accountDetail.hdPath,
+          };
 
       const { signature, txHash } = await this.invokeApp('signTransaction', [
         txData,
       ]);
-      const txJSON = transaction.toJSON();
       let decoded;
 
-      if (is1559Tx(txJSON)) {
+      if (is1559) {
         decoded = ethUtil.rlp.decode('0x' + signature.substring(4), true);
 
         txJSON.r = bytesToHex(decoded.data[10]);
@@ -330,10 +349,17 @@ export class EthImKeyKeyring extends EventEmitter {
       await this.unlock();
       const checksummedAddress = ethUtil.toChecksumAddress(address);
       const accountDetail = this.accountDetails[checksummedAddress];
+      const isV4 = opts.version === 'V4';
+
+      if (opts.version !== 'V4' && opts.version !== 'V3') {
+        throw new Error('ImKey only supports V3 and V4 of typed data');
+      }
+
+      const eip712HashHexWithoutSha3 = signHashHex(data, isV4);
 
       const res = await this.invokeApp('signMessage', [
         accountDetail.hdPath,
-        JSON.stringify(data),
+        eip712HashHexWithoutSha3,
         checksummedAddress,
         false,
       ]);

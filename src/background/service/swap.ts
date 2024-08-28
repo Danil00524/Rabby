@@ -6,18 +6,41 @@ import { CEX, DEX } from '@/constant';
 import { OpenApiService } from '@rabby-wallet/rabby-api';
 import { openapiService } from 'background/service';
 import { TokenItem } from './openapi';
+import * as Sentry from '@sentry/browser';
 
 type ViewKey = keyof typeof CEX | keyof typeof DEX;
 
 export type SwapServiceStore = {
-  gasPriceCache: GasCache;
-  selectedDex: DEX_ENUM | null;
   selectedChain: CHAINS_ENUM | null;
   selectedFromToken?: TokenItem;
   selectedToToken?: TokenItem;
+  autoSlippage: boolean;
+  isCustomSlippage?: boolean;
+  slippage: string;
+
+  /**
+   * @deprecated
+   */
+  gasPriceCache: GasCache;
+  /**
+   * @deprecated
+   */
   unlimitedAllowance: boolean;
+  /**
+   * @deprecated
+   */
+  selectedDex: DEX_ENUM | null;
+  /**
+   * @deprecated
+   */
   viewList: Record<ViewKey, boolean>;
+  /**
+   * @deprecated
+   */
   tradeList: Record<ViewKey, boolean>;
+  /**
+   * @deprecated
+   */
   sortIncludeGasFee?: boolean;
   preferMEVGuarded: boolean;
 };
@@ -34,6 +57,8 @@ class SwapService {
     tradeList: {} as SwapServiceStore['tradeList'],
     sortIncludeGasFee: false,
     preferMEVGuarded: false,
+    autoSlippage: true,
+    slippage: '0.1',
   };
 
   init = async () => {
@@ -47,6 +72,9 @@ class SwapService {
         viewList: {} as SwapServiceStore['viewList'],
         tradeList: {} as SwapServiceStore['tradeList'],
         preferMEVGuarded: false,
+        sortIncludeGasFee: true,
+        autoSlippage: true,
+        slippage: '0.1',
       },
     });
     if (storage) {
@@ -168,7 +196,7 @@ class SwapService {
   };
 
   getSwapSortIncludeGasFee = () => {
-    return this.store.sortIncludeGasFee || false;
+    return this.store.sortIncludeGasFee ?? true;
   };
 
   setSwapSortIncludeGasFee = (bool: boolean) => {
@@ -203,16 +231,32 @@ class SwapService {
         ...quoteInfo,
         tx,
         tx_id: hash,
+      }).catch((err) => {
+        Sentry.captureException(
+          `postSwap error: ${JSON.stringify(err)}| ${JSON.stringify(quoteInfo)}`
+        );
       });
     }
   };
 
   getSwapPreferMEVGuarded = () => {
-    return this.store.preferMEVGuarded || false;
+    return this.store.preferMEVGuarded ?? false;
   };
 
   setSwapPreferMEVGuarded = (bool: boolean) => {
     this.store.preferMEVGuarded = bool;
+  };
+
+  setAutoSlippage = (auto: boolean) => {
+    this.store.autoSlippage = auto;
+  };
+
+  setIsCustomSlippage = (isCustomSlippage: boolean) => {
+    this.store.isCustomSlippage = isCustomSlippage;
+  };
+
+  setSlippage = (slippage: string) => {
+    this.store.slippage = slippage;
   };
 }
 

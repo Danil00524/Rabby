@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 export interface Props {
   onChange: (value: string) => void;
   value: string;
-  chainEnum: CHAINS_ENUM;
+  chainEnum: CHAINS_ENUM | string;
   error: string;
 }
 
@@ -29,6 +29,9 @@ export const AddressInput: React.FC<Props> = ({
           'bg-r-neutral-card-1',
           {
             'border-rabby-neutral-line': !error,
+          },
+          'focus-within: border border-[#7084ff]',
+          {
             'border-red': error,
           }
         )}

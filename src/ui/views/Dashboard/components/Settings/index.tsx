@@ -14,14 +14,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHistory } from 'react-router-dom';
 import { ReactComponent as RcIconActivities } from 'ui/assets/dashboard/activities.svg';
+import { ReactComponent as RcIconGasTopUp } from 'ui/assets/dashboard/gas-top-up-1.svg';
+import { ReactComponent as RcIconPoints } from 'ui/assets/dashboard/rabby-points.svg';
 import { ReactComponent as RcIconArrowRight } from 'ui/assets/dashboard/settings/icon-right-arrow.svg';
-import { ReactComponent as RcIconArrowBlueRight } from 'ui/assets/dashboard/settings/icon-right-arrow-blue.svg';
 import { ReactComponent as RcIconArrowOrangeRight } from 'ui/assets/dashboard/settings/icon-right-arrow-orange.svg';
+import { ReactComponent as RcIconArrowCCRight } from 'ui/assets/dashboard/settings/icon-right-arrow-cc.svg';
+
 import IconSettingsDeBank from 'ui/assets/dashboard/settings/debank.svg';
 
 import { useRabbyDispatch, useRabbySelector } from '@/ui/store';
 import { ReactComponent as RcIconAddresses } from 'ui/assets/dashboard/addresses.svg';
 import { ReactComponent as RcIconCustomRPC } from 'ui/assets/dashboard/custom-rpc.svg';
+import { ReactComponent as RcIconCustomTestnet } from 'ui/assets/dashboard/icon-custom-testnet.svg';
 import { ReactComponent as RcIconPreferMetamask } from 'ui/assets/dashboard/icon-prefer-metamask.svg';
 import { ReactComponent as RcIconAutoLock } from 'ui/assets/dashboard/settings/icon-auto-lock.svg';
 import { ReactComponent as RcIconLockWallet } from 'ui/assets/dashboard/settings/lock.svg';
@@ -32,13 +36,15 @@ import { ReactComponent as RcIconDiscord } from 'ui/assets/discord.svg';
 import IconTwitterHover from 'ui/assets/twitter-hover.svg';
 import { ReactComponent as RcIconTwitter } from 'ui/assets/twitter.svg';
 import { ReactComponent as RcIconClear } from 'ui/assets/icon-clear.svg';
+import { ReactComponent as RcIconClearCC } from 'ui/assets/icon-clear-cc.svg';
 import LogoRabby from 'ui/assets/logo-rabby-large.svg';
-import { ReactComponent as RcIconServer } from 'ui/assets/server.svg';
+// import { ReactComponent as RcIconServer } from 'ui/assets/server.svg';
+import { ReactComponent as RcIconServerCC } from 'ui/assets/server-cc.svg';
 import IconSuccess from 'ui/assets/success.svg';
-import { ReactComponent as RcIconTestnet } from 'ui/assets/dashboard/settings/icon-testnet.svg';
-import { Field, PageHeader, Popup } from 'ui/component';
+// import { ReactComponent as RcIconTestnet } from 'ui/assets/dashboard/settings/icon-testnet.svg';
+import { Checkbox, Field, PageHeader, Popup } from 'ui/component';
 import AuthenticationModalPromise from 'ui/component/AuthenticationModal';
-import { openInTab, useWallet } from 'ui/utils';
+import { openInTab, openInternalPageInTab, useWallet } from 'ui/utils';
 import './style.less';
 
 import IconCheck from 'ui/assets/check-2.svg';
@@ -46,7 +52,9 @@ import { ReactComponent as RcIconSettingsFeatureConnectedDapps } from 'ui/assets
 import { ReactComponent as RcIconSettingsAboutFollowUs } from 'ui/assets/dashboard/settings/follow-us.svg';
 import { ReactComponent as RcIconSettingsAboutSupporetedChains } from 'ui/assets/dashboard/settings/supported-chains.svg';
 import { ReactComponent as RcIconSettingsAboutVersion } from 'ui/assets/dashboard/settings/version.svg';
-import IconSettingsRabbyBadge from 'ui/assets/badge/rabby-badge-s.svg';
+import { ReactComponent as RcIconSettingsGitForkCC } from 'ui/assets/dashboard/settings/git-fork-cc.svg';
+import { ReactComponent as RcIconSettingsSearchDapps } from 'ui/assets/dashboard/settings/search.svg';
+import IconSettingsRabbyBadge from 'ui/assets/badge/free-gas-badge-s.svg';
 import { ReactComponent as RcIconI18n } from 'ui/assets/dashboard/settings/i18n.svg';
 import { ReactComponent as RcIconFeedback } from 'ui/assets/dashboard/settings/feedback.svg';
 
@@ -57,6 +65,8 @@ import { Contacts, RecentConnections } from '..';
 import SwitchThemeModal from './components/SwitchThemeModal';
 import ThemeIcon from '@/ui/component/ThemeMode/ThemeIcon';
 import FeedbackPopup from '../Feedback';
+import { getChainList, getMainnetChainList } from '@/utils/chain';
+import { SvgIconCross } from '@/ui/assets';
 
 const useAutoLockOptions = () => {
   const { t } = useTranslation();
@@ -212,11 +222,13 @@ const ResetAccountModal = ({
   onCancel(): void;
 }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [clearNonce, setClearNonce] = useState(false);
   const wallet = useWallet();
   const { t } = useTranslation();
 
   const handleCancel = () => {
     setIsVisible(false);
+    setClearNonce(false);
     setTimeout(() => {
       onCancel();
     }, 500);
@@ -225,6 +237,9 @@ const ResetAccountModal = ({
   const handleResetAccount = async () => {
     const currentAddress = (await wallet.getCurrentAccount())?.address || '';
     await wallet.clearAddressPendingTransactions(currentAddress);
+    if (clearNonce) {
+      await wallet.clearAddressTransactions(currentAddress);
+    }
     message.success({
       icon: <img src={IconSuccess} className="icon icon-success" />,
       content: t('page.dashboard.settings.pendingTransactionCleared'),
@@ -259,11 +274,42 @@ const ResetAccountModal = ({
         <p className="reset-account-content">
           {t('page.dashboard.settings.clearPendingTip2')}
         </p>
-        <div className="flex justify-center mt-24 popup-footer">
+        <div className="flex flex-col mt-auto popup-footer px-20 bottom-18">
+          <div className="absolute left-0 top-[40px] w-full h-0 border-solid border-t-[0.5px] border-rabby-neutral-line"></div>
+          <div className="flex justify-center mb-[38px]">
+            <Checkbox
+              checked={clearNonce}
+              unCheckBackground="transparent"
+              checkIcon={
+                clearNonce ? undefined : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                  >
+                    <path
+                      d="M7.97578 13.7748C11.179 13.7748 13.7758 11.1781 13.7758 7.9748C13.7758 4.77155 11.179 2.1748 7.97578 2.1748C4.77253 2.1748 2.17578 4.77155 2.17578 7.9748C2.17578 11.1781 4.77253 13.7748 7.97578 13.7748Z"
+                      stroke="var(--r-neutral-body)"
+                      stroke-width="0.90625"
+                      stroke-miterlimit="10"
+                    />
+                  </svg>
+                )
+              }
+              onChange={setClearNonce}
+            >
+              <span className="text-13 text-r-neutral-body">
+                Also reset my local nonce data and signature record
+              </span>
+            </Checkbox>
+          </div>
+
           <Button
             type="primary"
             size="large"
-            className="w-[200px]"
+            block
             onClick={handleResetAccount}
           >
             {t('global.confirm')}
@@ -433,14 +479,14 @@ const ClaimRabbyBadge = ({ onClick }: { onClick: () => void }) => {
           }
           rightIcon={
             <ThemeIcon
-              src={RcIconArrowBlueRight}
-              className="icon icon-arrow-right w-20 h-20"
+              src={RcIconArrowCCRight}
+              className="icon icon-arrow-right w-20 h-20 text-[#109D63]"
             />
           }
           onClick={onClick}
-          className="text-blue-light bg-r-blue-light-1 font-medium"
+          className="bg-[rgba(16,157,99,0.20)] text-[#109D63] hover:border-[#109D63] font-medium"
         >
-          {t('page.dashboard.settings.claimRabbyBadge')}
+          {t('page.dashboard.settings.claimFreeGasBadge')}
         </Field>
       </div>
     </div>
@@ -604,6 +650,9 @@ const SettingsInner = ({
         width: 320,
         closable: true,
         centered: true,
+        closeIcon: (
+          <SvgIconCross className="w-14 fill-current text-r-neutral-foot" />
+        ),
         className: clsx(updateVersionClassName, 'modal-support-darkmode'),
         title: t('page.dashboard.settings.updateVersion.title'),
         content: (
@@ -647,6 +696,19 @@ const SettingsInner = ({
           },
         },
         {
+          leftIcon: RcIconGasTopUp,
+          content: t('page.dashboard.settings.features.gasTopUp'),
+          onClick: () => {
+            history.push('/gas-top-up');
+            matomoRequestEvent({
+              category: 'Setting',
+              action: 'clickToUse',
+              label: 'Gas Top Up',
+            });
+            reportSettings('Gas Top Up');
+          },
+        },
+        {
           leftIcon: RcIconActivities,
           content: t('page.dashboard.settings.features.signatureRecord'),
           onClick: () => {
@@ -670,6 +732,26 @@ const SettingsInner = ({
               label: 'Manage Address',
             });
             reportSettings('Manage Address');
+          },
+        },
+        {
+          leftIcon: RcIconPoints,
+          content: t('page.dashboard.settings.features.rabbyPoints'),
+          onClick: () => {
+            history.push('/rabby-points');
+          },
+        },
+        {
+          leftIcon: RcIconSettingsSearchDapps,
+          content: t('page.dashboard.settings.features.searchDapps'),
+          onClick: () => {
+            matomoRequestEvent({
+              category: 'Setting',
+              action: 'clickToUse',
+              label: 'Search Dapps',
+            });
+            reportSettings('Search Dapps');
+            openInternalPageInTab('dapp-search');
           },
         },
         {
@@ -702,15 +784,19 @@ const SettingsInner = ({
             />
           ),
         },
+
         {
-          leftIcon: RcIconTestnet,
-          content: t('page.dashboard.settings.settings.enableTestnets'),
-          rightIcon: (
-            <Switch
-              checked={isShowTestnet}
-              onChange={handleSwitchIsShowTestnet}
-            />
-          ),
+          leftIcon: RcIconCustomTestnet,
+          content: t('page.dashboard.settings.settings.customTestnet'),
+          onClick: () => {
+            history.push('/custom-testnet');
+            matomoRequestEvent({
+              category: 'Setting',
+              action: 'clickToUse',
+              label: 'Custom Testnet',
+            });
+            reportSettings('Custom Testnet');
+          },
         },
         {
           leftIcon: RcIconCustomRPC,
@@ -841,6 +927,53 @@ const SettingsInner = ({
         },
       ] as SettingItem[],
     },
+    debugkits: {
+      label: 'Debug Kits (Not present on production)',
+      items: [
+        {
+          leftIcon: RcIconServerCC,
+          content: (
+            <span>{t('page.dashboard.settings.backendServiceUrl')}</span>
+          ),
+          onClick: () => setShowOpenApiModal(true),
+          rightIcon: (
+            <ThemeIcon
+              src={RcIconArrowRight}
+              className="icon icon-arrow-right"
+            />
+          ),
+        },
+        {
+          leftIcon: RcIconServerCC,
+          content: (
+            <span>{t('page.dashboard.settings.testnetBackendServiceUrl')}</span>
+          ),
+          onClick: () => setShowTestnetOpenApiModal(true),
+          rightIcon: (
+            <ThemeIcon
+              src={RcIconArrowRight}
+              className="icon icon-arrow-right"
+            />
+          ),
+        },
+        {
+          leftIcon: RcIconClearCC,
+          content: <span>{t('page.dashboard.settings.clearWatchMode')}</span>,
+          onClick: handleClickClearWatchMode,
+        },
+        {
+          leftIcon: RcIconSettingsGitForkCC,
+          content: <span>Git Build Hash</span>,
+          rightIcon: (
+            <>
+              <span className="text-14 mr-[8px]">
+                {process.env.RABBY_BUILD_GIT_HASH}
+              </span>
+            </>
+          ),
+        },
+      ] as SettingItem[],
+    },
     about: {
       label: t('page.dashboard.settings.aboutUs'),
       items: [
@@ -928,7 +1061,7 @@ const SettingsInner = ({
                 className="text-14 mr-[8px] text-r-neutral-title-1"
                 role="button"
               >
-                {Object.values(CHAINS).length}
+                {getChainList('mainnet').length}
               </span>
               <ThemeIcon
                 src={RcIconArrowRight}
@@ -996,34 +1129,9 @@ const SettingsInner = ({
     },
   };
 
-  if (process.env.DEBUG) {
-    renderData.features.items.splice(
-      -1,
-      0,
-      {
-        leftIcon: RcIconServer,
-        content: t('page.dashboard.settings.backendServiceUrl'),
-        onClick: () => setShowOpenApiModal(true),
-        rightIcon: (
-          <ThemeIcon src={RcIconArrowRight} className="icon icon-arrow-right" />
-        ),
-      } as typeof renderData.features.items[0],
-      {
-        leftIcon: RcIconServer,
-        content: t('page.dashboard.settings.testnetBackendServiceUrl'),
-        onClick: () => setShowTestnetOpenApiModal(true),
-        rightIcon: (
-          <ThemeIcon src={RcIconArrowRight} className="icon icon-arrow-right" />
-        ),
-      } as typeof renderData.features.items[0]
-    );
-  }
-
-  if (process.env.DEBUG) {
-    renderData.features.items.push({
-      content: t('page.dashboard.settings.clearWatchMode'),
-      onClick: handleClickClearWatchMode,
-    } as typeof renderData.features.items[0]);
+  if (!process.env.DEBUG) {
+    // @ts-expect-error we know it's not defined on production
+    delete renderData.debugkits;
   }
 
   const lockWallet = async () => {
@@ -1068,7 +1176,7 @@ const SettingsInner = ({
               {'Lock Wallet'}
             </Button> */}
         <ClaimRabbyBadge onClick={onOpenBadgeModal} />
-        <RequestDeBankTestnetGasToken />
+        {/* <RequestDeBankTestnetGasToken /> */}
         {Object.values(renderData).map((group, idxl1) => {
           return (
             <div key={`g-${idxl1}`} className="setting-block">

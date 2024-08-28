@@ -27,6 +27,8 @@ import {
 } from './Popup/ApprovalPopupContainer';
 import { useImKeyStatus } from '@/ui/component/ConnectStatus/useImKeyStatus';
 import * as Sentry from '@sentry/browser';
+import { findChain } from '@/utils/chain';
+import { emitSignComponentAmounted } from '@/utils/signEvent';
 
 interface ApprovalParams {
   address: string;
@@ -43,7 +45,12 @@ export const ImKeyHardwareWaiting = ({
 }: {
   params: ApprovalParams;
 }) => {
-  const { setTitle, setVisible, visible, closePopup } = useCommonPopupView();
+  const {
+    setTitle,
+    setVisible,
+    closePopup,
+    setPopupProps,
+  } = useCommonPopupView();
   const [statusProp, setStatusProp] = React.useState<
     ApprovalPopupContainerProps['status']
   >('SENDING');
@@ -55,9 +62,9 @@ export const ImKeyHardwareWaiting = ({
     WALLETCONNECT_STATUS_MAP.WAITING
   );
   const [getApproval, resolveApproval, rejectApproval] = useApproval();
-  const chain = Object.values(CHAINS).find(
-    (item) => item.id === (params.chainId || 1)
-  )!;
+  const chain = findChain({
+    id: params.chainId || 1,
+  });
   const { t } = useTranslation();
   const [isSignText, setIsSignText] = React.useState(false);
   const [result, setResult] = React.useState('');
@@ -88,12 +95,13 @@ export const ImKeyHardwareWaiting = ({
     if (showToast) {
       message.success(t('page.signFooterBar.ledger.resent'));
     }
+    emitSignComponentAmounted();
   };
 
-  const handleClickResult = () => {
-    const url = chain.scanLink.replace(/_s_/, result);
-    openInTab(url);
-  };
+  // const handleClickResult = () => {
+  //   const url = chain.scanLink.replace(/_s_/, result);
+  //   openInTab(url);
+  // };
 
   const init = async () => {
     const account = params.isGnosis
@@ -118,23 +126,26 @@ export const ImKeyHardwareWaiting = ({
 
         const signingTx = await wallet.getSigningTx(signingTxId);
 
-        if (!signingTx?.explain) {
+        if (!signingTx?.explain && chain && !chain.isTestnet) {
           setErrorMessage(t('page.signFooterBar.qrcode.failedToGetExplain'));
           return;
         }
 
-        const explain = signingTx.explain;
+        const explain = signingTx?.explain;
 
-        stats.report('signTransaction', {
+        wallet.reportStats('signTransaction', {
           type: account.brandName,
-          chainId: chain.serverId,
+          chainId: chain?.serverId || '',
           category: KEYRING_CATEGORY_MAP[account.type],
           preExecSuccess: explain
             ? explain?.calcSuccess && explain?.pre_exec.success
             : true,
-          createBy: params?.$ctx?.ga ? 'rabby' : 'dapp',
+          createdBy: params?.$ctx?.ga ? 'rabby' : 'dapp',
           source: params?.$ctx?.ga?.source || '',
           trigger: params?.$ctx?.ga?.trigger || '',
+          networkType: chain?.isTestnet
+            ? 'Custom Network'
+            : 'Integrated Network',
         });
       }
     } else {
@@ -180,7 +191,7 @@ export const ImKeyHardwareWaiting = ({
         matomoRequestEvent({
           category: 'Transaction',
           action: 'Submit',
-          label: KEYRING_CLASS.HARDWARE.IMKEY,
+          label: chain?.isTestnet ? 'Custom Network' : 'Integrated Network',
         });
 
         setSignFinishedData({
@@ -195,6 +206,8 @@ export const ImKeyHardwareWaiting = ({
         setErrorMessage(data.errorMsg);
       }
     });
+
+    emitSignComponentAmounted();
   };
 
   React.useEffect(() => {
@@ -222,6 +235,10 @@ export const ImKeyHardwareWaiting = ({
     init();
     mountedRef.current = true;
   }, []);
+
+  React.useEffect(() => {
+    setPopupProps(params?.extra?.popupProps);
+  }, [params?.extra?.popupProps]);
 
   // React.useEffect(() => {
   //   if (visible && mountedRef.current && !showDueToStatusChangeRef.current) {

@@ -38,7 +38,7 @@ export const accountToDisplay = createModel<RootModel>()({
     },
   },
   effects: (dispatch) => ({
-    async getAllAccountsToDisplay(_?, store?) {
+    async getAllAccountsToDisplay(_: void, store) {
       dispatch.accountToDisplay.setField({ loadingAccounts: true });
 
       const [displayedKeyrings, allAlianNames] = await Promise.all([
@@ -108,14 +108,14 @@ export const accountToDisplay = createModel<RootModel>()({
       }
     },
 
-    async updateAllBalance(_?, store?) {
+    async updateAllBalance(_: void, store) {
       const queue = new PQueue({ concurrency: 10 });
       let hasError = false;
       const result = await queue.addAll(
-        (store?.accountToDisplay?.accountsList || []).map((item) => {
+        (store.accountToDisplay?.accountsList || []).map((item) => {
           return async () => {
             try {
-              const balance = await store.app.wallet.getAddressBalance(
+              const balance = await store.app.wallet.getInMemoryAddressBalance(
                 item.address
               );
               return {

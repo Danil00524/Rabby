@@ -5,7 +5,7 @@ import { Result } from '@rabby-wallet/rabby-security-engine';
 import TransportWebHID from '@ledgerhq/hw-transport-webhid';
 import { Skeleton, message } from 'antd';
 import { useScroll } from 'react-use';
-import { useSize } from 'ahooks';
+import { useSize, useDebounceFn } from 'ahooks';
 import { underline2Camelcase } from '@/background/utils';
 import { useLedgerDeviceConnected } from '@/ui/utils/ledger';
 import { matomoRequestEvent } from '@/utils/matomo-request';
@@ -14,7 +14,6 @@ import {
   INTERNAL_REQUEST_ORIGIN,
   KEYRING_CLASS,
   KEYRING_TYPE,
-  CHAINS,
   REJECT_SIGN_TEXT_KEYRINGS,
 } from 'consts';
 import IconGnosis from 'ui/assets/walletlogo/safe.svg';
@@ -36,12 +35,15 @@ import {
   formatSecurityEngineCtx,
   normalizeTypeData,
 } from './TypedDataActions/utils';
-import { Level } from '@rabby-wallet/rabby-security-engine/dist/rules';
-import { isTestnetChainId, findChainByID } from '@/utils/chain';
+import {
+  Level,
+  defaultRules,
+} from '@rabby-wallet/rabby-security-engine/dist/rules';
+import { isTestnetChainId, findChain } from '@/utils/chain';
 import { TokenDetailPopup } from '@/ui/views/Dashboard/components/TokenDetailPopup';
-import { useSignPermissionCheck } from '../hooks/useSignPermissionCheck';
-import { useTestnetCheck } from '../hooks/useTestnetCheck';
 import { useEnterPassphraseModal } from '@/ui/hooks/useEnterPassphraseModal';
+import clsx from 'clsx';
+import stats from '@/stats';
 
 interface SignTypedDataProps {
   method: string;
@@ -57,12 +59,16 @@ interface SignTypedDataProps {
 }
 
 const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
+  const renderStartAt = useRef(0);
+  const actionType = useRef('');
   const [, resolveApproval, rejectApproval] = useApproval();
   const { t } = useTranslation();
   const wallet = useWallet();
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollRefSize = useSize(scrollRef);
   const scrollInfo = useScroll(scrollRef);
+  const securityEngineCtx = useRef<any>(null);
+  const logId = useRef('');
   const [isLoading, setIsLoading] = useState(true);
   const [isWatch, setIsWatch] = useState(false);
   const [isLedger, setIsLedger] = useState(false);
@@ -81,23 +87,6 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
     number | string | undefined
   >(undefined);
 
-  useSignPermissionCheck({
-    origin: params.session.origin,
-    chainId: currentChainId,
-    onOk: () => {
-      handleCancel();
-    },
-    onDisconnect: () => {
-      handleCancel();
-    },
-  });
-
-  useTestnetCheck({
-    chainId: currentChainId,
-    onOk: () => {
-      handleCancel();
-    },
-  });
   const [
     actionRequireData,
     setActionRequireData,
@@ -194,7 +183,7 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
         console.error(error);
       }
       if (chainId) {
-        return findChainByID(chainId) || undefined;
+        return findChain({ id: chainId }) || undefined;
       }
     }
 
@@ -205,7 +194,9 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
     if (params.session.origin !== INTERNAL_REQUEST_ORIGIN) {
       const site = await wallet.getConnectedSite(params.session.origin);
       if (site) {
-        return CHAINS[site.chain].id;
+        return findChain({
+          enum: site.chain,
+        })?.id;
       }
     } else {
       return chain?.id;
@@ -223,10 +214,10 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
         ? account
         : await wallet.getCurrentAccount();
       const chainId = signTypedData?.domain?.chainId;
-      const apiProvider = isTestnetChainId(chainId)
-        ? wallet.testnetOpenapi
-        : wallet.openapi;
-      return await apiProvider.parseTypedData({
+      if (isTestnetChainId(chainId)) {
+        return null;
+      }
+      return wallet.openapi.parseTypedData({
         typedData: signTypedData,
         address: currentAccount!.address,
         origin: session.origin,
@@ -314,7 +305,12 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
     }
 
     if (isGnosis && params.account) {
-      if (WaitingSignMessageComponent[params.account.type]) {
+      if (
+        WaitingSignMessageComponent[params.account.type] &&
+        ![KEYRING_CLASS.PRIVATE_KEY, KEYRING_CLASS.MNEMONIC].includes(
+          params.account.type as any
+        )
+      ) {
         wallet.signTypedData(
           params.account.type,
           params.account.address,
@@ -418,7 +414,7 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
     if (params.session.origin !== INTERNAL_REQUEST_ORIGIN) {
       const site = await wallet.getConnectedSite(params.session.origin);
       if (site) {
-        data.chainId = CHAINS[site.chain].id.toString();
+        data.chainId = findChain({ enum: site.chain })?.id.toString();
       }
     }
     if (currentAccount) {
@@ -433,6 +429,7 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
         requireData,
         wallet,
       });
+      securityEngineCtx.current = ctx;
       const result = await executeEngine(ctx);
       setEngineResults(result);
     }
@@ -480,6 +477,17 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
     dispatch.securityEngine.closeRuleDrawer();
   };
 
+  const { run: reportLogId } = useDebounceFn(
+    (rules) => {
+      wallet.openapi.postActionLog({
+        id: logId.current,
+        type: 'typed_data',
+        rules,
+      });
+    },
+    { wait: 1000 }
+  );
+
   useEffect(() => {
     executeSecurityEngine();
   }, [rules]);
@@ -488,6 +496,8 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
     const sender = isSignTypedDataV1 ? params.data[1] : params.data[0];
     if (!loading) {
       if (typedDataActionData) {
+        logId.current = typedDataActionData.log_id;
+        actionType.current = typedDataActionData?.action?.type || '';
         const parsed = parseAction(typedDataActionData, signTypedData, sender);
         setParsedActionData(parsed);
         getRequireData(parsed);
@@ -510,14 +520,55 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
   }, [scrollInfo, scrollRefSize]);
 
   useEffect(() => {
+    if (logId.current && !isLoading && securityEngineCtx.current) {
+      try {
+        const keys = Object.keys(securityEngineCtx.current);
+        const key: any = keys[0];
+        const notTriggeredRules = defaultRules.filter((rule) => {
+          return (
+            rule.requires.includes(key) &&
+            !engineResults.some((item) => item.id === rule.id)
+          );
+        });
+        reportLogId([
+          ...notTriggeredRules.map((rule) => ({
+            id: rule.id,
+            level: null,
+          })),
+          ...engineResults.map((result) => ({
+            id: result.id,
+            level: result.level,
+          })),
+        ]);
+      } catch (e) {
+        // IGNORE
+      }
+    }
+  }, [isLoading, engineResults]);
+
+  useEffect(() => {
+    renderStartAt.current = Date.now();
     init();
+    dispatch.securityEngine.init();
     checkWachMode();
     report('createSignText');
   }, []);
 
+  useEffect(() => {
+    if (!isLoading) {
+      const duration = Date.now() - renderStartAt.current;
+      stats.report('signPageRenderTime', {
+        type: 'typedata',
+        actionType: actionType.current,
+        chain: chain?.serverId || '',
+        duration,
+      });
+    }
+  }, [isLoading]);
+
   return (
     <>
-      <div className="approval-text">
+      <div className="approval-text relative">
         {isLoading && (
           <Skeleton.Input
             active
@@ -536,8 +587,22 @@ const SignTypedData = ({ params }: { params: SignTypedDataProps }) => {
             raw={isSignTypedDataV1 ? data[0] : signTypedData || data[1]}
             message={parsedMessage}
             origin={params.session.origin}
+            originLogo={params.session.icon}
           />
         )}
+        {!isLoading && chain?.isTestnet ? (
+          <div
+            className={clsx(
+              'absolute top-[350px] right-[10px]',
+              'px-[16px] py-[12px] rotate-[-23deg]',
+              'border-rabby-neutral-title1 border-[1px] rounded-[6px]',
+              'text-r-neutral-title1 text-[20px] leading-[24px]',
+              'opacity-30'
+            )}
+          >
+            Custom Network
+          </div>
+        ) : null}
       </div>
 
       <footer className="approval-text__footer">

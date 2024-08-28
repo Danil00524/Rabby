@@ -13,12 +13,15 @@ import { ContractCallRequireData } from './Actions/utils';
 import { formatTokenAmount } from 'ui/utils/number';
 import { Col, Row, Table } from './Actions/components/Table';
 import * as Values from './Actions/components/Values';
+import { SubTable, SubCol, SubRow } from './Actions/components/SubTable';
 
 type CommonActions = {
   title: string;
   desc: string;
   is_asset_changed: boolean;
   is_involving_privacy: boolean;
+  receiver?: string;
+  from?: string;
 };
 
 export const CommonAction = ({
@@ -55,77 +58,89 @@ export const CommonAction = ({
     return map;
   }, [engineResults]);
 
-  React.useEffect(() => {
-    dispatch.securityEngine.init();
-  }, []);
+  const addressInfo = requireData
+    ? (requireData as ContractCallRequireData).unexpectedAddr
+    : undefined;
+
+  const hasReceiver = useMemo(() => {
+    if (!actionData.receiver || !actionData.from) return false;
+    return !isSameAddress(actionData.receiver, actionData.from);
+  }, [actionData]);
 
   return (
     <div className="relative">
       <Table>
         {requireData && chain ? (
-          <Col>
-            <Row className="w-[100px]" isTitle>
-              {t('page.signTx.common.interactContract')}
-            </Row>
-            <Row>
-              <div>
-                <Values.Address address={requireData.id} chain={chain} />
-              </div>
-              <ul className="desc-list">
-                <ProtocolListItem protocol={requireData.protocol} />
-                <li>
-                  <Values.Interacted value={requireData.hasInteraction} />
-                </li>
-
-                {isInWhitelist && <li>{t('page.signTx.markAsTrust')}</li>}
-
-                <SecurityListItem
-                  id="1135"
-                  engineResult={engineResultMap['1135']}
-                  forbiddenText={t('page.signTx.markAsBlock')}
-                />
-
-                <SecurityListItem
-                  id="1137"
-                  engineResult={engineResultMap['1137']}
-                  warningText={t('page.signTx.markAsBlock')}
-                />
-                <li>
-                  <ViewMore
-                    type="contract"
-                    data={{
-                      hasInteraction: requireData.hasInteraction,
-                      bornAt: requireData.bornAt,
-                      protocol: requireData.protocol,
-                      rank: requireData.rank,
-                      address: requireData.id,
-                      chain,
-                    }}
+          <>
+            <Col>
+              <Row className="w-[100px]" isTitle itemsCenter>
+                {t('page.signTx.common.interactContract')}
+              </Row>
+              <Row>
+                <ViewMore
+                  type="contract"
+                  data={{
+                    hasInteraction: requireData.hasInteraction,
+                    bornAt: requireData.bornAt,
+                    protocol: requireData.protocol,
+                    rank: requireData.rank,
+                    address: requireData.id,
+                    chain,
+                  }}
+                >
+                  <Values.Address
+                    id="common-action-address"
+                    hasHover
+                    address={requireData.id}
+                    chain={chain}
                   />
-                </li>
-              </ul>
-            </Row>
-          </Col>
+                </ViewMore>
+              </Row>
+            </Col>
+            <SubTable target="common-action-address">
+              <SubCol>
+                <SubRow isTitle>{t('page.signTx.protocol')}</SubRow>
+                <SubRow>
+                  <ProtocolListItem protocol={requireData.protocol} />
+                </SubRow>
+              </SubCol>
+
+              <SubCol>
+                <SubRow isTitle>{t('page.signTx.hasInteraction')}</SubRow>
+                <SubRow>
+                  <Values.Interacted value={requireData.hasInteraction} />
+                </SubRow>
+              </SubCol>
+
+              {isInWhitelist && (
+                <SubCol>
+                  <SubRow isTitle>{t('page.signTx.myMark')}</SubRow>
+                  <SubRow>{t('page.signTx.trusted')}</SubRow>
+                </SubCol>
+              )}
+
+              <SecurityListItem
+                id="1135"
+                engineResult={engineResultMap['1135']}
+                forbiddenText={t('page.signTx.markAsBlock')}
+                title={t('page.signTx.myMark')}
+              />
+
+              <SecurityListItem
+                id="1137"
+                engineResult={engineResultMap['1137']}
+                warningText={t('page.signTx.markAsBlock')}
+                title={t('page.signTx.myMark')}
+              />
+            </SubTable>
+          </>
         ) : null}
         <Col>
           <Row className="w-[100px]" isTitle>
             {t('page.signTx.common.description')}
           </Row>
-          <Row className="flex flex-row items-center gap-x-4">
-            <span>{actionData.desc}</span>
-            {/* <TooltipWithMagnetArrow
-              overlayClassName="rectangle w-[260px]"
-              title={descTip}
-            >
-              {actionData.is_asset_changed ||
-              actionData.is_involving_privacy ? (
-                <img src={Warning2SVG} />
-              ) : null}
-              {!actionData.is_asset_changed &&
-              !actionData.is_involving_privacy ? (
-                <img src={CertifiedSVG} />
-              ) : null}
-            </TooltipWithMagnetArrow> */}
+          <Row className="flex flex-row items-center gap-x-4" wrap>
+            {actionData.desc}
           </Row>
         </Col>
         {(requireData as ContractCallRequireData)?.payNativeTokenAmount &&
@@ -153,70 +168,56 @@ export const CommonAction = ({
               }
             </Col>
           )}
-        {(requireData as ContractCallRequireData)?.unexpectedAddr && (
-          <Col>
-            <Row isTitle className="w-[100px]">
-              {t('page.signTx.contractCall.suspectedReceiver')}
-            </Row>
-            <Row>
-              <div>
-                <Values.Address
-                  address={
-                    (requireData as ContractCallRequireData).unexpectedAddr!
-                      .address
-                  }
-                  chain={chain}
-                />
-                <ul className="desc-list">
-                  <li>
-                    <Values.AddressMemo
-                      address={
-                        (requireData as ContractCallRequireData).unexpectedAddr!
-                          .address
-                      }
-                    />
-                  </li>
-                  {(requireData as ContractCallRequireData).unexpectedAddr!
-                    .name && (
-                    <li>
-                      {
-                        (requireData as ContractCallRequireData).unexpectedAddr!
-                          .name
-                      }
-                    </li>
-                  )}
-                  <li>
-                    <ViewMore
-                      type="receiver"
-                      data={{
-                        title: t('page.signTx.contractCall.suspectedReceiver'),
-                        address: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.address,
-                        chain: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.chain,
-                        eoa: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.eoa,
-                        cex: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.cex,
-                        contract: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.contract,
-                        usd_value: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.usd_value,
-                        hasTransfer: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.hasTransfer,
-                        isTokenContract: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.isTokenContract,
-                        name: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.name,
-                        onTransferWhitelist: (requireData as ContractCallRequireData)
-                          .unexpectedAddr!.onTransferWhitelist,
-                      }}
-                    />
-                  </li>
-                </ul>
-              </div>
-            </Row>
-          </Col>
+        {hasReceiver && actionData.receiver && addressInfo && (
+          <>
+            <Col>
+              <Row isTitle className="w-[100px]" itemsCenter>
+                {t('page.signTx.swap.receiver')}
+              </Row>
+              <Row>
+                <ViewMore
+                  type="receiver"
+                  data={{
+                    title: t('page.signTx.contractCall.receiver'),
+                    address: addressInfo.address,
+                    chain: addressInfo.chain,
+                    eoa: addressInfo.eoa,
+                    cex: addressInfo.cex,
+                    contract: addressInfo.contract,
+                    usd_value: addressInfo.usd_value,
+                    hasTransfer: addressInfo.hasTransfer,
+                    isTokenContract: addressInfo.isTokenContract,
+                    name: addressInfo.name,
+                    onTransferWhitelist: addressInfo.onTransferWhitelist,
+                  }}
+                >
+                  <Values.Address
+                    id="common-action-receiver"
+                    hasHover
+                    address={actionData.receiver}
+                    chain={chain}
+                  />
+                </ViewMore>
+              </Row>
+            </Col>
+            <SubTable target="common-action-receiver">
+              <SubCol>
+                <SubRow isTitle>{t('page.signTx.addressNote')}</SubRow>
+                <SubRow>
+                  <Values.AddressMemo address={actionData.receiver} />
+                </SubRow>
+              </SubCol>
+
+              <SecurityListItem
+                engineResult={engineResultMap['1139']}
+                id="1139"
+                dangerText={t('page.signTx.swap.unknownAddress')}
+                defaultText={
+                  <Values.KnownAddress address={actionData.receiver} />
+                }
+              />
+            </SubTable>
+          </>
         )}
       </Table>
     </div>

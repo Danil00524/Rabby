@@ -4,15 +4,13 @@ import { ReactComponent as SvgIconArrowDownTriangle } from '@/ui/assets/swap/arr
 import Modal from '@/ui/component/ChainSelector/Modal';
 import { CHAINS, CHAINS_ENUM } from '@/constant';
 import {
-  CHAINS_BY_NET,
   findChainByEnum,
   findChainByServerID,
+  getChainList,
 } from '@/utils/chain';
 import { SelectChainItemProps } from '@/ui/component/ChainSelector/components/SelectChainItem';
 
-const allMainnetChainEnums = Object.values(CHAINS_BY_NET.mainnet).map(
-  (item) => item.enum
-);
+const allMainnetChainEnums = getChainList('mainnet').map((item) => item.enum);
 
 export const ChainWrapper = styled.div`
   background: var(--r-neutral-card-2);
@@ -45,7 +43,7 @@ export const ChainWrapper = styled.div`
 const getDisabledTips: SelectChainItemProps['disabledTips'] = (ctx) => {
   const chainItem = findChainByServerID(ctx.chain.serverId);
 
-  if (chainItem?.isTestnet) return 'Testnet is not supported';
+  if (chainItem?.isTestnet) return 'Custom network is not supported';
 
   return 'Coming Soon';
 };

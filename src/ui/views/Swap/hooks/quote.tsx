@@ -20,6 +20,7 @@ import pRetry from 'p-retry';
 import { useRabbySelector } from '@/ui/store';
 import stats from '@/stats';
 import { ChainGas } from '@/background/service/preference';
+import { verifySdk } from './verify';
 
 export interface validSlippageParams {
   chain: CHAINS_ENUM;
@@ -355,6 +356,7 @@ export const useQuoteMethods = () => {
                     : Number(feeAfterDiscount) || 0,
                 chain,
                 gasPrice,
+                fee: true,
               },
               walletOpenapi
             ),
@@ -389,6 +391,22 @@ export const useQuoteMethods = () => {
                 retries: 1,
               }
             );
+            const { isSdkDataPass } = verifySdk({
+              chain,
+              dexId,
+              slippage,
+              data: {
+                ...data,
+                fromToken: payToken.id,
+                fromTokenAmount: new BigNumber(payAmount)
+                  .times(10 ** payToken.decimals)
+                  .toFixed(0, 1),
+                toToken: receiveToken?.id,
+              },
+              payToken,
+              receiveToken,
+            });
+            preExecResult.isSdkPass = isSdkDataPass;
           } catch (error) {
             const quote: TDexQuoteData = {
               data,
@@ -432,60 +450,14 @@ export const useQuoteMethods = () => {
     [walletOpenapi, pRetry, getPreExecResult]
   );
 
-  const getCexQuote = React.useCallback(
-    async (
-      params: getAllCexQuotesParams & {
-        cexId: string;
-        setQuote?: (quote: TCexQuoteData) => void;
-      }
-    ): Promise<TCexQuoteData> => {
-      const {
-        payToken,
-        payAmount,
-        receiveTokenId: receive_token_id,
-        chain,
-        cexId: cex_id,
-        setQuote,
-      } = params;
-
-      const p = {
-        cex_id,
-        pay_token_amount: payAmount,
-        chain_id: CHAINS[chain].serverId,
-        pay_token_id: payToken.id,
-        receive_token_id,
-      };
-
-      let quote: TCexQuoteData;
-
-      try {
-        const data = await walletOpenapi.getCEXSwapQuote(p);
-        quote = {
-          data,
-          name: cex_id,
-          isDex: false,
-        };
-      } catch (error) {
-        quote = {
-          data: null,
-          name: cex_id,
-          isDex: false,
-        };
-      }
-
-      setQuote?.(quote);
-
-      return quote;
-    },
-    [walletOpenapi]
-  );
-
   const swapViewList = useRabbySelector((s) => s.swap.viewList);
+
+  const supportedDEXList = useRabbySelector((s) => s.swap.supportedDEXList);
 
   const getAllQuotes = React.useCallback(
     async (
       params: Omit<getDexQuoteParams, 'dexId'> & {
-        setQuote: (quote: TCexQuoteData | TDexQuoteData) => void;
+        setQuote: (quote: TDexQuoteData) => void;
       }
     ) => {
       if (
@@ -502,24 +474,12 @@ export const useQuoteMethods = () => {
       }
 
       return Promise.all([
-        ...(Object.keys(DEX).filter(
-          (e) => swapViewList?.[e] !== false
+        ...(supportedDEXList.filter(
+          (e) => DEX[e] && swapViewList?.[e] !== false
         ) as DEX_ENUM[]).map((dexId) => getDexQuote({ ...params, dexId })),
-        ...Object.keys(CEX)
-          .filter((e) => swapViewList?.[e] !== false)
-          .map((cexId) =>
-            getCexQuote({
-              cexId,
-              payToken: params.payToken,
-              payAmount: params.payAmount,
-              receiveTokenId: params.receiveToken.id,
-              chain: params.chain,
-              setQuote: params.setQuote,
-            })
-          ),
       ]);
     },
-    [getDexQuote, getCexQuote]
+    [getDexQuote]
   );
 
   return {
@@ -532,6 +492,7 @@ export const useQuoteMethods = () => {
     getDexQuote,
     getAllQuotes,
     swapViewList,
+    supportedDEXList,
   };
 };
 
@@ -574,34 +535,6 @@ interface getPreExecResultParams
   quote: QuoteResult;
 }
 
-export const halfBetterRate = (
-  full: ExplainTxResponse,
-  half: ExplainTxResponse
-) => {
-  if (
-    full.balance_change.success &&
-    half.balance_change.success &&
-    half.balance_change.receive_token_list[0]?.amount &&
-    full.balance_change.receive_token_list[0]?.amount
-  ) {
-    const halfReceive = new BigNumber(
-      half.balance_change.receive_token_list[0].amount
-    );
-
-    const fullREceive = new BigNumber(
-      full.balance_change.receive_token_list[0]?.amount
-    );
-    const diff = new BigNumber(halfReceive).times(2).minus(fullREceive);
-
-    return diff.gt(0)
-      ? new BigNumber(diff.div(fullREceive).toPrecision(1))
-          .times(100)
-          .toString(10)
-      : null;
-  }
-  return null;
-};
-
 export type QuotePreExecResultInfo = {
   shouldApproveToken: boolean;
   shouldTwoStepApprove: boolean;
@@ -609,6 +542,7 @@ export type QuotePreExecResultInfo = {
   gasPrice: number;
   gasUsd: string;
   gasUsdValue: string;
+  isSdkPass?: boolean;
 } | null;
 
 interface getDexQuoteParams {
@@ -628,20 +562,7 @@ export type TDexQuoteData = {
   isDex: true;
   preExecResult: QuotePreExecResultInfo;
   loading?: boolean;
-};
-
-interface getAllCexQuotesParams {
-  payToken: TokenItem;
-  payAmount: string;
-  receiveTokenId: string;
-  chain: CHAINS_ENUM;
-}
-
-export type TCexQuoteData = {
-  data: null | CEXQuote;
-  name: string;
-  isDex: false;
-  loading?: boolean;
+  isBest?: boolean;
 };
 
 export function isSwapWrapToken(
@@ -663,6 +584,8 @@ export type QuoteProvider = {
   name: string;
   error?: boolean;
   quote: QuoteResult | null;
+  manualClick?: boolean;
+  preExecResult: QuotePreExecResultInfo;
   shouldApproveToken: boolean;
   shouldTwoStepApprove: boolean;
   halfBetterRate?: string;

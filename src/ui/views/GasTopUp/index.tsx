@@ -24,7 +24,7 @@ const GasList = [20, 50, 100];
 
 const EthGasList = [100, 200, 500];
 
-const ETHGasTokenChains = [CHAINS_ENUM.ETH, CHAINS_ENUM.RSK];
+const ETHGasTokenChains = [CHAINS_ENUM.ETH];
 
 export const GasTopUp = () => {
   const wallet = useWallet();
@@ -317,12 +317,15 @@ export const GasTopUp = () => {
       <div className="absolute top-0 left-0 right-0 h-[217px] bg-r-blue-default dark:bg-r-blue-disable">
         <RcBubleInBg className="absolute right-[25px] top-[35px] z-[0]" />
       </div>
-      <div className="p-20 pt-0 h-full relative bg-transparent">
+      <div className="p-20 pt-0 h-full relative bg-transparent ">
         <PageHeader
-          onBack={handleClickBack}
-          forceShowBack
-          invertBack
+          // onBack={handleClickBack}
+          // forceShowBack
+          canBack={false}
           keepBackLightVersion
+          closeCn="brightness-[10]"
+          closeable
+          onClose={handleClickBack}
         >
           <span className="text-white">{t('page.gasTopUp.title')}</span>
         </PageHeader>
@@ -363,11 +366,7 @@ export const GasTopUp = () => {
         </div>
         <div className="flex justify-center ">
           <Button
-            style={{
-              width: 280,
-              height: 52,
-              marginTop: 63,
-            }}
+            className="mt-[63px] h-[52px] w-[360px]"
             type="primary"
             size="large"
             onClick={handleContinue}
@@ -380,7 +379,10 @@ export const GasTopUp = () => {
 
       <ConfirmDrawer
         visible={visible}
-        onClose={() => setVisible(false)}
+        onClose={() => {
+          setVisible(false);
+          setToken(undefined);
+        }}
         cost={prices?.[index]?.[0] ? prices?.[index]?.[0] + '' : '0'}
         list={availableTokenList}
         token={token}

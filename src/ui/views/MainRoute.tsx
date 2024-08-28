@@ -38,7 +38,6 @@ import AddressBackupPrivateKey from './AddressBackup/PrivateKey';
 import Swap from './Swap';
 import { getUiType, useWallet } from '../utils';
 import GasTopUp from './GasTopUp';
-import ApprovalManage from './ApprovalManage';
 import CustomRPC from './CustomRPC';
 import { ImportMyMetaMaskAccount } from './ImportMyMetaMaskAccount';
 import { matomoRequestEvent } from '@/utils/matomo-request';
@@ -59,7 +58,10 @@ import { ImKeyConnect } from './ImportHardware/ImKeyConnect';
 import InputMnemonics from './ImportMnemonics/InputMnemonics';
 import CreateMnemonics from './CreateMnemonics';
 import ImportHardware from './ImportHardware';
+import { CustomTestnet } from './CustomTestnet';
 import { AddFromCurrentSeedPhrase } from './AddFromCurrentSeedPhrase';
+import { Ecology } from './Ecology';
+import { Bridge } from './Bridge';
 
 declare global {
   interface Window {
@@ -238,13 +240,14 @@ const Main = () => {
           <Receive />
         </PrivateRoute>
 
+        <PrivateRoute exact path="/bridge">
+          <Bridge />
+        </PrivateRoute>
+
         <PrivateRoute exact path="/gas-top-up">
           <GasTopUp />
         </PrivateRoute>
 
-        <PrivateRoute exact path="/popup/approval-manage">
-          <ApprovalManage />
-        </PrivateRoute>
         <PrivateRoute exact path="/approval-manage">
           <ApprovalManagePage />
         </PrivateRoute>
@@ -269,6 +272,9 @@ const Main = () => {
         <PrivateRoute exact path="/custom-rpc">
           <CustomRPC />
         </PrivateRoute>
+        <PrivateRoute exact path="/custom-testnet">
+          <CustomTestnet />
+        </PrivateRoute>
         <PrivateRoute exact path="/prefer-metamask-dapps">
           <PreferMetamaskDapps />
         </PrivateRoute>
@@ -280,6 +286,9 @@ const Main = () => {
         </PrivateRoute>
         <PrivateRoute exact path="/rabby-points">
           <RabbyPoints />
+        </PrivateRoute>
+        <PrivateRoute path="/ecology/:chainId">
+          <Ecology />
         </PrivateRoute>
       </Switch>
 

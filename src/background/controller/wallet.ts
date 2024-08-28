@@ -1,8 +1,5 @@
 import * as ethUtil from 'ethereumjs-util';
-import Wallet, { thirdparty } from 'ethereumjs-wallet';
 import { ethErrors } from 'eth-rpc-errors';
-import * as bip39 from '@scure/bip39';
-import { wordlist } from '@scure/bip39/wordlists/english';
 import { ethers, Contract } from 'ethers';
 import { groupBy, uniq } from 'lodash';
 import abiCoder, { AbiCoder } from 'web3-eth-abi';
@@ -26,18 +23,18 @@ import {
   transactionBroadcastWatchService,
   RabbyPointsService,
   HDKeyRingLastAddAddrTimeService,
+  bridgeService,
 } from 'background/service';
 import buildinProvider, {
   EthereumProvider,
 } from 'background/utils/buildinProvider';
 import { openIndexPage } from 'background/webapi/tab';
 import { CacheState } from 'background/service/pageStateCache';
-import { DisplayedKeryring } from 'background/service/keyring';
+import { DisplayedKeryring, KeyringService } from 'background/service/keyring';
 import providerController from './provider/controller';
 import BaseController from './base';
 import {
   KEYRING_WITH_INDEX,
-  CHAINS,
   EVENTS,
   BRAND_ALIAN_TYPE_TEXT,
   WALLET_BRAND_CONTENT,
@@ -47,6 +44,8 @@ import {
   INTERNAL_REQUEST_SESSION,
   DARK_MODE_TYPE,
   KEYRING_CLASS,
+  DBK_CHAIN_ID,
+  DBK_NFT_CONTRACT_ADDRESS,
 } from 'consts';
 import { ERC20ABI } from 'consts/abi';
 import { Account, IHighlightedAddress } from '../service/preference';
@@ -87,20 +86,36 @@ import transactionWatcher from '../service/transactionWatcher';
 import Safe from '@rabby-wallet/gnosis-sdk';
 import { Chain } from '@debank/common';
 import { isAddress } from 'web3-utils';
-import { findChainByEnum } from '@/utils/chain';
+import { findChain, findChainByEnum, getChainList } from '@/utils/chain';
 import { cached } from '../utils/cache';
 import { createSafeService } from '../utils/safe';
 import { OpenApiService } from '@rabby-wallet/rabby-api';
 import { autoLockService } from '../service/autoLock';
 import { t } from 'i18next';
-import { getWeb3Provider } from './utils';
+import { getWeb3Provider, web3AbiCoder } from './utils';
 import { CoboSafeAccount } from '@/utils/cobo-agrus-sdk/cobo-agrus-sdk';
 import CoboArgusKeyring from '../service/keyring/eth-cobo-argus-keyring';
-import { GET_WALLETCONNECT_CONFIG } from '@/utils/walletconnect';
+import { GET_WALLETCONNECT_CONFIG, allChainIds } from '@/utils/walletconnect';
 import { estimateL1Fee } from '@/utils/l2';
 import HdKeyring from '@rabby-wallet/eth-hd-keyring';
 import CoinbaseKeyring from '@rabby-wallet/eth-coinbase-keyring/dist/coinbase-keyring';
+import { customTestnetService } from '../service/customTestnet';
 import { getKeyringBridge, hasBridge } from '../service/keyring/bridge';
+import { syncChainService } from '../service/syncChain';
+import { matomoRequestEvent } from '@/utils/matomo-request';
+import { BALANCE_LOADING_CONFS } from '@/constant/timeout';
+import { IExtractFromPromise } from '@/ui/utils/type';
+import { Wallet, thirdparty } from '@ethereumjs/wallet';
+import { BridgeRecord } from '../service/bridge';
+import { TokenSpenderPair } from '@/types/permit2';
+import {
+  summarizeRevoke,
+  ApprovalSpenderItemToBeRevoked,
+  decodePermit2GroupKey,
+} from '@/utils-isomorphic/approve';
+import { appIsProd } from '@/utils/env';
+import { getRecommendGas, getRecommendNonce } from './walletUtils/sign';
+import { waitSignComponentAmounted } from '@/utils/signEvent';
 
 const stashKeyrings: Record<string | number, any> = {};
 
@@ -111,7 +126,16 @@ export class WalletController extends BaseController {
   testnetOpenapi = testnetOpenapiService;
 
   /* wallet */
-  boot = (password) => keyringService.boot(password);
+  boot = async (password) => {
+    await keyringService.boot(password);
+    const hasOtherProvider = preferenceService.getHasOtherProvider();
+    const isDefaultWallet = preferenceService.getIsDefaultWallet();
+    if (!hasOtherProvider) {
+      setPopupIcon('default');
+    } else {
+      setPopupIcon(isDefaultWallet ? 'rabby' : 'metamask');
+    }
+  };
   isBooted = () => keyringService.isBooted();
   verifyPassword = (password: string) =>
     keyringService.verifyPassword(password);
@@ -148,7 +172,10 @@ export class WalletController extends BaseController {
     return whitelistService.isWhitelistEnabled();
   };
 
-  requestETHRpc = (data: { method: string; params: any }, chainId: string) => {
+  requestETHRpc = <T = any>(
+    data: { method: string; params: any },
+    chainId: string
+  ): Promise<IExtractFromPromise<T>> => {
     return providerController.ethRpc(
       {
         data,
@@ -158,7 +185,10 @@ export class WalletController extends BaseController {
     );
   };
 
-  sendRequest = <T = any>(data: ProviderRequest['data']) => {
+  sendRequest = <T = any>(data: ProviderRequest['data'], isBuild = false) => {
+    if (isBuild) {
+      return Promise.resolve<T>(data as T);
+    }
     return provider<T>({
       data,
       session: INTERNAL_REQUEST_SESSION,
@@ -187,9 +217,9 @@ export class WalletController extends BaseController {
   ): Promise<string> => {
     const account = await preferenceService.getCurrentAccount();
     if (!account) throw new Error(t('background.error.noCurrentAccount'));
-    const chainId = Object.values(CHAINS)
-      .find((chain) => chain.serverId === chainServerId)
-      ?.id.toString();
+    const chainId = findChain({
+      serverId: chainServerId,
+    })?.id.toString();
     if (!chainId) throw new Error(t('background.error.invalidChainId'));
 
     buildinProvider.currentProvider.currentAccount = account.address;
@@ -221,9 +251,9 @@ export class WalletController extends BaseController {
   }) => {
     const account = await preferenceService.getCurrentAccount();
     if (!account) throw new Error(t('background.error.noCurrentAccount'));
-    const chain = Object.values(CHAINS).find(
-      (chain) => chain.serverId === chainServerId
-    );
+    const chain = findChain({
+      serverId: chainServerId,
+    });
     const chainId = chain?.id;
     if (!chainId) throw new Error(t('background.error.invalidChainId'));
     const params: Record<string, any> = {
@@ -459,7 +489,8 @@ export class WalletController extends BaseController {
           chainObj.serverId,
           pay_token_id,
           spender,
-          unlimited ? MAX_UNSIGNED_256_INT : quote.fromTokenAmount,
+          // unlimited ? MAX_UNSIGNED_256_INT : quote.fromTokenAmount,
+          quote.fromTokenAmount,
           {
             ga: {
               ...$ctx?.ga,
@@ -505,6 +536,359 @@ export class WalletController extends BaseController {
     } catch (e) {
       unTriggerTxCounter.reset();
     }
+  };
+
+  buildDexSwap = async (
+    {
+      chain,
+      quote,
+      needApprove,
+      spender,
+      pay_token_id,
+      unlimited,
+      gasPrice,
+      shouldTwoStepApprove,
+      postSwapParams,
+      swapPreferMEVGuarded,
+    }: {
+      chain: CHAINS_ENUM;
+      quote: QuoteResult;
+      needApprove: boolean;
+      spender: string;
+      pay_token_id: string;
+      unlimited: boolean;
+      gasPrice?: number;
+      shouldTwoStepApprove: boolean;
+      swapPreferMEVGuarded: boolean;
+
+      postSwapParams?: Omit<
+        Parameters<OpenApiService['postSwap']>[0],
+        'tx_id' | 'tx'
+      >;
+    },
+    $ctx?: any
+  ) => {
+    const account = await preferenceService.getCurrentAccount();
+    if (!account) throw new Error(t('background.error.noCurrentAccount'));
+    const chainObj = findChainByEnum(chain);
+    if (!chainObj)
+      throw new Error(t('background.error.notFindChain', { chain }));
+
+    const txs: Tx[] = [];
+    try {
+      if (shouldTwoStepApprove) {
+        unTriggerTxCounter.increase(3);
+        const res = await this.approveToken(
+          chainObj.serverId,
+          pay_token_id,
+          spender,
+          0,
+          {
+            ga: {
+              ...$ctx?.ga,
+              source: 'approvalAndSwap|tokenApproval',
+            },
+          },
+          gasPrice,
+          { isSwap: true, swapPreferMEVGuarded },
+          true
+        );
+        txs.push(res.params[0]);
+        unTriggerTxCounter.decrease();
+      }
+
+      if (needApprove) {
+        if (!shouldTwoStepApprove) {
+          unTriggerTxCounter.increase(2);
+        }
+        const res = await this.approveToken(
+          chainObj.serverId,
+          pay_token_id,
+          spender,
+          // unlimited ? MAX_UNSIGNED_256_INT : quote.fromTokenAmount,
+          quote.fromTokenAmount,
+          {
+            ga: {
+              ...$ctx?.ga,
+              source: 'approvalAndSwap|tokenApproval',
+            },
+          },
+          gasPrice,
+          { isSwap: true, swapPreferMEVGuarded },
+          true
+        );
+        txs.push(res.params[0]);
+        unTriggerTxCounter.decrease();
+      }
+
+      if (postSwapParams) {
+        swapService.addTx(chain, quote.tx.data, postSwapParams);
+      }
+      const res = await this.sendRequest(
+        {
+          $ctx:
+            needApprove && pay_token_id !== chainObj.nativeTokenAddress
+              ? {
+                  ga: {
+                    ...$ctx?.ga,
+                    source: 'approvalAndSwap|swap',
+                  },
+                }
+              : $ctx,
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: quote.tx.from,
+              to: quote.tx.to,
+              data: quote.tx.data || '0x',
+              value: `0x${new BigNumber(quote.tx.value || '0').toString(16)}`,
+              chainId: chainObj.id,
+              gasPrice: gasPrice
+                ? `0x${new BigNumber(gasPrice).toString(16)}`
+                : undefined,
+              isSwap: true,
+              swapPreferMEVGuarded,
+            },
+          ],
+        },
+        true
+      );
+      txs.push(res.params[0]);
+      unTriggerTxCounter.decrease();
+    } catch (e) {
+      unTriggerTxCounter.reset();
+    }
+
+    return txs;
+  };
+
+  bridgeToken = async (
+    {
+      to,
+      data,
+      payTokenRawAmount,
+      payTokenId,
+      payTokenChainServerId,
+      shouldApprove,
+      shouldTwoStepApprove,
+      gasPrice,
+      info,
+      value,
+    }: {
+      data: string;
+      to: string;
+      value: string;
+      chainId: number;
+      shouldApprove: boolean;
+      shouldTwoStepApprove: boolean;
+      payTokenId: string;
+      payTokenChainServerId: string;
+      payTokenRawAmount: string;
+      gasPrice?: number;
+      info: BridgeRecord;
+    },
+    $ctx?: any
+  ) => {
+    const account = await preferenceService.getCurrentAccount();
+    if (!account) throw new Error(t('background.error.noCurrentAccount'));
+    const chainObj = findChain({ serverId: payTokenChainServerId });
+    if (!chainObj)
+      throw new Error(
+        t('background.error.notFindChain', { payTokenChainServerId })
+      );
+    try {
+      if (shouldTwoStepApprove) {
+        unTriggerTxCounter.increase(3);
+        await this.approveToken(
+          payTokenChainServerId,
+          payTokenId,
+          to,
+          0,
+          {
+            ga: {
+              ...$ctx?.ga,
+              source: 'approvalAndBridge|tokenApproval',
+            },
+          },
+          gasPrice,
+          { isBridge: true }
+        );
+        unTriggerTxCounter.decrease();
+      }
+
+      if (shouldApprove) {
+        if (!shouldTwoStepApprove) {
+          unTriggerTxCounter.increase(2);
+        }
+        await this.approveToken(
+          payTokenChainServerId,
+          payTokenId,
+          to,
+          payTokenRawAmount,
+          {
+            ga: {
+              ...$ctx?.ga,
+              source: 'approvalAndBridge|tokenApproval',
+            },
+          },
+          gasPrice,
+          { isBridge: true }
+        );
+        unTriggerTxCounter.decrease();
+      }
+
+      if (info) {
+        bridgeService.addTx(chainObj.enum, data, info);
+      }
+      await this.sendRequest({
+        $ctx:
+          shouldApprove && payTokenId !== chainObj.nativeTokenAddress
+            ? {
+                ga: {
+                  ...$ctx?.ga,
+                  source: 'approvalAndBridge|bridge',
+                },
+              }
+            : $ctx,
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: account.address,
+            to: to,
+            data: data || '0x',
+            value: `0x${new BigNumber(value || '0').toString(16)}`,
+            chainId: chainObj.id,
+            gasPrice: gasPrice
+              ? `0x${new BigNumber(gasPrice).toString(16)}`
+              : undefined,
+            isBridge: true,
+          },
+        ],
+      });
+      unTriggerTxCounter.decrease();
+    } catch (e) {
+      unTriggerTxCounter.reset();
+    }
+  };
+
+  buildBridgeToken = async (
+    {
+      to,
+      data,
+      payTokenRawAmount,
+      payTokenId,
+      payTokenChainServerId,
+      shouldApprove,
+      shouldTwoStepApprove,
+      gasPrice,
+      info,
+      value,
+    }: {
+      data: string;
+      to: string;
+      value: string;
+      chainId: number;
+      shouldApprove: boolean;
+      shouldTwoStepApprove: boolean;
+      payTokenId: string;
+      payTokenChainServerId: string;
+      payTokenRawAmount: string;
+      gasPrice?: number;
+      info: BridgeRecord;
+    },
+    $ctx?: any
+  ) => {
+    const account = await preferenceService.getCurrentAccount();
+    if (!account) throw new Error(t('background.error.noCurrentAccount'));
+    const chainObj = findChain({ serverId: payTokenChainServerId });
+    if (!chainObj)
+      throw new Error(
+        t('background.error.notFindChain', { payTokenChainServerId })
+      );
+
+    const txs: Tx[] = [];
+    try {
+      if (shouldTwoStepApprove) {
+        unTriggerTxCounter.increase(3);
+        const res = await this.approveToken(
+          payTokenChainServerId,
+          payTokenId,
+          to,
+          0,
+          {
+            ga: {
+              ...$ctx?.ga,
+              source: 'approvalAndBridge|tokenApproval',
+            },
+          },
+          gasPrice,
+          { isBridge: true },
+          true
+        );
+        txs.push(res.params[0]);
+        unTriggerTxCounter.decrease();
+      }
+
+      if (shouldApprove) {
+        if (!shouldTwoStepApprove) {
+          unTriggerTxCounter.increase(2);
+        }
+        const res = await this.approveToken(
+          payTokenChainServerId,
+          payTokenId,
+          to,
+          payTokenRawAmount,
+          {
+            ga: {
+              ...$ctx?.ga,
+              source: 'approvalAndBridge|tokenApproval',
+            },
+          },
+          gasPrice,
+          { isBridge: true },
+          true
+        );
+        txs.push(res.params[0]);
+        unTriggerTxCounter.decrease();
+      }
+
+      if (info) {
+        bridgeService.addTx(chainObj.enum, data, info);
+      }
+      const res = await this.sendRequest(
+        {
+          $ctx:
+            shouldApprove && payTokenId !== chainObj.nativeTokenAddress
+              ? {
+                  ga: {
+                    ...$ctx?.ga,
+                    source: 'approvalAndBridge|bridge',
+                  },
+                }
+              : $ctx,
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: account.address,
+              to: to,
+              data: data || '0x',
+              value: `0x${new BigNumber(value || '0').toString(16)}`,
+              chainId: chainObj.id,
+              gasPrice: gasPrice
+                ? `0x${new BigNumber(gasPrice).toString(16)}`
+                : undefined,
+              isBridge: true,
+            },
+          ],
+        },
+        true
+      );
+      txs.push(res.params[0]);
+      unTriggerTxCounter.decrease();
+    } catch (e) {
+      unTriggerTxCounter.reset();
+    }
+    return txs;
   };
 
   getUnTriggerTxCount = () => {
@@ -565,13 +949,18 @@ export class WalletController extends BaseController {
     amount: number | string,
     $ctx?: any,
     gasPrice?: number,
-    extra?: { isSwap: boolean; swapPreferMEVGuarded?: boolean }
+    extra?: {
+      isSwap?: boolean;
+      swapPreferMEVGuarded?: boolean;
+      isBridge?: boolean;
+    },
+    isBuild = false
   ) => {
     const account = await preferenceService.getCurrentAccount();
     if (!account) throw new Error(t('background.error.noCurrentAccount'));
-    const chainId = Object.values(CHAINS).find(
-      (chain) => chain.serverId === chainServerId
-    )?.id;
+    const chainId = findChain({
+      serverId: chainServerId,
+    })?.id;
     if (!chainId) throw new Error(t('background.error.invalidChainId'));
     let tx: any = {
       from: account.address,
@@ -613,11 +1002,86 @@ export class WalletController extends BaseController {
         ...extra,
       };
     }
-    await this.sendRequest({
+    return await this.sendRequest(
+      {
+        $ctx,
+        method: 'eth_sendTransaction',
+        params: [tx],
+      },
+      isBuild
+    );
+  };
+
+  lockdownPermit2 = async (
+    input: {
+      id: string;
+      chainServerId: string;
+      tokenSpenders: TokenSpenderPair[];
+      $ctx?: any;
+      gasPrice?: number;
+    },
+    isBuild = false
+  ) => {
+    const {
+      chainServerId,
+      id,
+      tokenSpenders: _tokenSpenders,
       $ctx,
-      method: 'eth_sendTransaction',
-      params: [tx],
-    });
+      gasPrice,
+    } = input;
+
+    const tokenSpenders = JSON.parse(JSON.stringify(_tokenSpenders));
+
+    const account = await preferenceService.getCurrentAccount();
+    if (!account) throw new Error(t('background.error.noCurrentAccount'));
+    const chainId = findChain({
+      serverId: chainServerId,
+    })?.id;
+    if (!chainId) throw new Error(t('background.error.invalidChainId'));
+    const tx: any = {
+      from: account.address,
+      to: id,
+      chainId: chainId,
+      data: web3AbiCoder.encodeFunctionCall(
+        {
+          constant: false,
+          inputs: [
+            {
+              name: 'approvals',
+              type: 'tuple[]',
+              internalType: 'tuple[]',
+              components: [
+                { type: 'address', name: 'token' },
+                { type: 'address', name: 'spender' },
+              ],
+            },
+          ],
+          name: 'lockdown',
+          outputs: [
+            {
+              name: '',
+              type: 'bool',
+            },
+          ],
+          payable: false,
+          stateMutability: 'nonpayable',
+          type: 'function',
+        },
+        [tokenSpenders] as any
+      ),
+    };
+    if (gasPrice) {
+      tx.gasPrice = gasPrice;
+    }
+
+    return await this.sendRequest(
+      {
+        $ctx,
+        method: 'eth_sendTransaction',
+        params: [tx],
+      },
+      isBuild
+    );
   };
 
   fetchEstimatedL1Fee = async (
@@ -631,7 +1095,9 @@ export class WalletController extends BaseController {
     buildinProvider.currentProvider.currentAccount = account.address;
     buildinProvider.currentProvider.currentAccountType = account.type;
     buildinProvider.currentProvider.currentAccountBrand = account.brandName;
-    buildinProvider.currentProvider.chainId = CHAINS[chain].network;
+    buildinProvider.currentProvider.chainId = findChain({
+      enum: chain,
+    })!.network;
 
     const provider = new ethers.providers.Web3Provider(
       buildinProvider.currentProvider
@@ -644,6 +1110,31 @@ export class WalletController extends BaseController {
     });
 
     return res;
+  };
+
+  mintDBKChainNFT = async () => {
+    const account = await preferenceService.getCurrentAccount();
+    if (!account) throw new Error(t('background.error.noCurrentAccount'));
+    await this.sendRequest({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: account.address,
+          to: DBK_NFT_CONTRACT_ADDRESS,
+          chainId: DBK_CHAIN_ID,
+          data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
+            {
+              name: 'mint',
+              inputs: [],
+              outputs: [],
+              stateMutability: 'nonpayable',
+              type: 'function',
+            },
+            []
+          ),
+        },
+      ],
+    });
   };
 
   transferNFT = async (
@@ -666,9 +1157,9 @@ export class WalletController extends BaseController {
   ) => {
     const account = await preferenceService.getCurrentAccount();
     if (!account) throw new Error(t('background.error.noCurrentAccount'));
-    const chainId = Object.values(CHAINS).find(
-      (chain) => chain.serverId === chainServerId
-    )?.id;
+    const chainId = findChain({
+      serverId: chainServerId,
+    })?.id;
     if (!chainId) throw new Error(t('background.error.invalidChainId'));
     if (abi === 'ERC721') {
       await this.sendRequest({
@@ -697,7 +1188,7 @@ export class WalletController extends BaseController {
                 stateMutability: 'nonpayable',
                 type: 'function',
               },
-              [account.address, to, tokenId] as any
+              [account.address, to, tokenId]
             ),
           },
         ],
@@ -761,7 +1252,7 @@ export class WalletController extends BaseController {
       contractId,
       spender,
       abi,
-      tokenId,
+      nftTokenId,
       isApprovedForAll,
     }: {
       chainServerId: string;
@@ -769,109 +1260,122 @@ export class WalletController extends BaseController {
       spender: string;
       abi: 'ERC721' | 'ERC1155' | '';
       isApprovedForAll: boolean;
-      tokenId: string | null | undefined;
+      nftTokenId?: string | null | undefined;
     },
-    $ctx?: any
+    $ctx?: any,
+    isBuild = false
   ) => {
     const account = await preferenceService.getCurrentAccount();
     if (!account) throw new Error(t('background.error.noCurrentAccount'));
-    const chainId = Object.values(CHAINS).find(
-      (chain) => chain.serverId === chainServerId
-    )?.id;
+    const chainId = findChain({
+      serverId: chainServerId,
+    })?.id;
     if (!chainId) throw new Error(t('background.error.invalidChainId'));
     if (abi === 'ERC721') {
       if (isApprovedForAll) {
-        await this.sendRequest({
-          $ctx,
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: account.address,
-              to: contractId,
-              chainId: chainId,
-              data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
-                {
-                  inputs: [
-                    {
-                      internalType: 'address',
-                      name: 'operator',
-                      type: 'address',
-                    },
-                    {
-                      internalType: 'bool',
-                      name: 'approved',
-                      type: 'bool',
-                    },
-                  ],
-                  name: 'setApprovalForAll',
-                  outputs: [],
-                  stateMutability: 'nonpayable',
-                  type: 'function',
-                },
-                [spender, false] as any
-              ),
-            },
-          ],
-        });
+        return await this.sendRequest(
+          {
+            $ctx,
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: account.address,
+                to: contractId,
+                chainId: chainId,
+                data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
+                  {
+                    inputs: [
+                      {
+                        internalType: 'address',
+                        name: 'operator',
+                        type: 'address',
+                      },
+                      {
+                        internalType: 'bool',
+                        name: 'approved',
+                        type: 'bool',
+                      },
+                    ],
+                    name: 'setApprovalForAll',
+                    outputs: [],
+                    stateMutability: 'nonpayable',
+                    type: 'function',
+                  },
+                  [spender, false] as any
+                ),
+              },
+            ],
+          },
+          isBuild
+        );
       } else {
-        await this.sendRequest({
+        return await this.sendRequest(
+          {
+            $ctx,
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: account.address,
+                to: contractId,
+                chainId: chainId,
+                data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
+                  {
+                    constant: false,
+                    inputs: [
+                      { internalType: 'address', name: 'to', type: 'address' },
+                      {
+                        internalType: 'uint256',
+                        name: 'tokenId',
+                        type: 'uint256',
+                      },
+                    ],
+                    name: 'approve',
+                    outputs: [],
+                    payable: false,
+                    stateMutability: 'nonpayable',
+                    type: 'function',
+                  },
+                  [
+                    '0x0000000000000000000000000000000000000000',
+                    nftTokenId,
+                  ] as any
+                ),
+              },
+            ],
+          },
+          isBuild
+        );
+      }
+    } else if (abi === 'ERC1155') {
+      return await this.sendRequest(
+        {
           $ctx,
           method: 'eth_sendTransaction',
           params: [
             {
               from: account.address,
               to: contractId,
-              chainId: chainId,
               data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
                 {
                   constant: false,
                   inputs: [
                     { internalType: 'address', name: 'to', type: 'address' },
-                    {
-                      internalType: 'uint256',
-                      name: 'tokenId',
-                      type: 'uint256',
-                    },
+                    { internalType: 'bool', name: 'approved', type: 'bool' },
                   ],
-                  name: 'approve',
+                  name: 'setApprovalForAll',
                   outputs: [],
                   payable: false,
                   stateMutability: 'nonpayable',
                   type: 'function',
                 },
-                ['0x0000000000000000000000000000000000000000', tokenId] as any
+                [spender, false] as any
               ),
+              chainId,
             },
           ],
-        });
-      }
-    } else if (abi === 'ERC1155') {
-      await this.sendRequest({
-        $ctx,
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: account.address,
-            to: contractId,
-            data: ((abiCoder as unknown) as AbiCoder).encodeFunctionCall(
-              {
-                constant: false,
-                inputs: [
-                  { internalType: 'address', name: 'to', type: 'address' },
-                  { internalType: 'bool', name: 'approved', type: 'bool' },
-                ],
-                name: 'setApprovalForAll',
-                outputs: [],
-                payable: false,
-                stateMutability: 'nonpayable',
-                type: 'function',
-              },
-              [spender, false] as any
-            ),
-            chainId,
-          },
-        ],
-      });
+        },
+        isBuild
+      );
     } else {
       throw new Error(t('background.error.unknownAbi'));
     }
@@ -964,13 +1468,21 @@ export class WalletController extends BaseController {
     if (!alianNameInited && alianNames.length === 0) {
       this.initAlianNames();
     }
+    const hasOtherProvider = preferenceService.getHasOtherProvider();
+    const isDefaultWallet = preferenceService.getIsDefaultWallet();
+    if (!hasOtherProvider) {
+      setPopupIcon('default');
+    } else {
+      setPopupIcon(isDefaultWallet ? 'rabby' : 'metamask');
+    }
   };
-  isUnlocked = () => keyringService.memStore.getState().isUnlocked;
+  isUnlocked = () => keyringService.isUnlocked();
 
   lockWallet = async () => {
     await keyringService.setLocked();
     sessionService.broadcastEvent('accountsChanged', []);
     sessionService.broadcastEvent('lock');
+    setPopupIcon('locked');
   };
 
   setAutoLockTime = (time: number) => {
@@ -1030,44 +1542,113 @@ export class WalletController extends BaseController {
     }
   };
 
-  private getTotalBalanceCached = cached(async (address) => {
-    const data = await openapiService.getTotalBalance(address);
-    preferenceService.updateAddressBalance(address, data);
-    return data;
-    // 5s
-  }, 5000);
+  private getTotalBalanceCached = cached(
+    'getTotalBalanceCached',
+    async (address: string) => {
+      const data = await openapiService.getTotalBalance(address);
+      preferenceService.updateBalanceAboutCache(address, {
+        totalBalance: data,
+      });
+      return data;
+    },
+    {
+      timeout: BALANCE_LOADING_CONFS.TIMEOUT,
+      maxSize: BALANCE_LOADING_CONFS.CACHE_LIMIT,
+    }
+  );
 
-  private getTestnetTotalBalanceCached = cached(async (address) => {
-    const testnetData = await testnetOpenapiService.getTotalBalance(address);
-    preferenceService.updateTestnetAddressBalance(address, testnetData);
-    return testnetData;
-  }, 5000);
+  private getTestnetTotalBalanceCached = cached(
+    'getTestnetTotalBalanceCached',
+    async (address: string) => {
+      const testnetData = await testnetOpenapiService.getTotalBalance(address);
+      preferenceService.updateTestnetAddressBalance(address, testnetData);
+      return testnetData;
+    },
+    {
+      timeout: BALANCE_LOADING_CONFS.TIMEOUT,
+      maxSize: BALANCE_LOADING_CONFS.CACHE_LIMIT,
+    }
+  );
 
-  getAddressBalance = async (
+  /**
+   * @description get balance about info by address,
+   * it will use cache in memory, or re-fetch, update-cache
+   * AND **persist the cache to preference store** if expired
+   */
+  getInMemoryAddressBalance = async (
     address: string,
     force = false,
     isTestnet = false
   ) => {
+    const addr = address?.toLowerCase() || '';
+
     if (isTestnet) {
-      return this.getTestnetTotalBalanceCached([address], address, force);
+      return this.getTestnetTotalBalanceCached.fn([addr], addr, force);
     }
-    return this.getTotalBalanceCached([address], address, force);
+    return this.getTotalBalanceCached.fn([addr], addr, force);
   };
 
+  forceExpireInMemoryAddressBalance = (address: string, isTestnet = false) => {
+    if (isTestnet) {
+      // preferenceService.removeTestnetAddressBalance(address);
+      return this.getTestnetTotalBalanceCached.forceExpire(address);
+    }
+
+    // preferenceService.removeAddressBalance(address);
+    return this.getTotalBalanceCached.forceExpire(address);
+  };
+
+  isInMemoryAddressBalanceExpired = (address: string, isTestnet = false) => {
+    if (isTestnet) {
+      return this.getTestnetTotalBalanceCached.isExpired(address);
+    }
+
+    return this.getTotalBalanceCached.isExpired(address);
+  };
+
+  /**
+   * @deprecatedgetPersistedBalanceAboutCacheMap
+   */
   getAddressCacheBalance = (address: string | undefined, isTestnet = false) => {
     if (!address) return null;
     if (isTestnet) {
-      return preferenceService.getTestnetAddressBalance(address);
+      return null;
     }
-    return preferenceService.getAddressBalance(address);
+
+    return (
+      preferenceService.getBalanceAboutCacheByAddress(address)?.totalBalance ??
+      null
+    );
   };
 
-  private getNetCurveCached = cached(async (address) => {
-    return openapiService.getNetCurve(address);
-  }, 5000);
+  getPersistedBalanceAboutCacheMap = () => {
+    return preferenceService.getBalanceAboutCacheMap();
+  };
 
-  getNetCurve = (address, force = false) => {
-    return this.getNetCurveCached([address], address, force);
+  private getNetCurveCached = cached(
+    'getNetCurveCached',
+    async (address) => {
+      const data = await openapiService.getNetCurve(address);
+      preferenceService.updateBalanceAboutCache(address, { curvePoints: data });
+      return data;
+    },
+    {
+      timeout: BALANCE_LOADING_CONFS.TIMEOUT,
+      maxSize: BALANCE_LOADING_CONFS.CACHE_LIMIT,
+    }
+  );
+
+  getInMemoryNetCurve = (address: string, force = false) => {
+    return this.getNetCurveCached.fn([address], address, force);
+  };
+
+  forceExpireInMemoryNetCurve = (address: string) => {
+    // preferenceService.removeCurvePoints(address);
+    return this.getNetCurveCached.forceExpire(address);
+  };
+
+  isInMemoryNetCurveExpired = (address: string) => {
+    return this.getNetCurveCached.isExpired(address);
   };
 
   setHasOtherProvider = (val: boolean) =>
@@ -1084,6 +1665,10 @@ export class WalletController extends BaseController {
   getThemeMode = () => preferenceService.getThemeMode();
   setThemeMode = (themeMode: DARK_MODE_TYPE) =>
     preferenceService.setThemeMode(themeMode);
+
+  isReserveGasOnSendToken = () => preferenceService.isReserveGasOnSendToken();
+  setReserveGasOnSendToken = (val: boolean) =>
+    preferenceService.setPreferencePartials({ reserveGasOnSendToken: val });
 
   getLastTimeSendToken = (address: string) =>
     preferenceService.getLastTimeSendToken(address);
@@ -1135,6 +1720,9 @@ export class WalletController extends BaseController {
   setSwapSortIncludeGasFee = swapService.setSwapSortIncludeGasFee;
   getSwapPreferMEVGuarded = swapService.getSwapPreferMEVGuarded;
   setSwapPreferMEVGuarded = swapService.setSwapPreferMEVGuarded;
+  setAutoSlippage = swapService.setAutoSlippage;
+  setIsCustomSlippage = swapService.setIsCustomSlippage;
+  setSlippage = swapService.setSlippage;
 
   setRedirect2Points = RabbyPointsService.setRedirect2Points;
   setRabbyPointsSignature = RabbyPointsService.setSignature;
@@ -1144,6 +1732,18 @@ export class WalletController extends BaseController {
   addHDKeyRingLastAddAddrTime = HDKeyRingLastAddAddrTimeService.addUnixRecord;
   getHDKeyRingLastAddAddrTimeStore = HDKeyRingLastAddAddrTimeService.getStore;
 
+  getBridgeData = bridgeService.getBridgeData;
+  getBridgeAggregators = bridgeService.getBridgeAggregators;
+  setBridgeAggregators = bridgeService.setBridgeAggregators;
+  getBridgeUnlimitedAllowance = bridgeService.getUnlimitedAllowance;
+  setBridgeUnlimitedAllowance = bridgeService.setUnlimitedAllowance;
+  setBridgeSelectedChain = bridgeService.setSelectedChain;
+  setBridgeSelectedFromToken = bridgeService.setSelectedFromToken;
+  setBridgeSelectedToToken = bridgeService.setSelectedToToken;
+  getBridgeSortIncludeGasFee = bridgeService.getBridgeSortIncludeGasFee;
+  setBridgeSortIncludeGasFee = bridgeService.setBridgeSortIncludeGasFee;
+  setBridgeSettingFirstOpen = bridgeService.setBridgeSettingFirstOpen;
+
   setCustomRPC = RPCService.setRPC;
   removeCustomRPC = RPCService.removeCustomRPC;
   getAllCustomRPC = RPCService.getAllRPC;
@@ -1151,7 +1751,9 @@ export class WalletController extends BaseController {
   pingCustomRPC = RPCService.ping;
   setRPCEnable = RPCService.setRPCEnable;
   validateRPC = async (url: string, chainId: number) => {
-    const chain = Object.values(CHAINS).find((item) => item.id === chainId);
+    const chain = findChain({
+      id: chainId,
+    });
     if (!chain) throw new Error(`ChainId ${chainId} is not supported`);
     const [_, rpcChainId] = await Promise.all([
       RPCService.ping(chain.enum),
@@ -1207,13 +1809,11 @@ export class WalletController extends BaseController {
     }
   };
   setSite = (data: ConnectedSite) => {
-    const chainItem = findChainByEnum(data.chain);
+    const chainItem = findChain({ enum: data.chain });
     if (!chainItem) {
       throw new Error(`[wallet::setSite] Chain ${data.chain} is not supported`);
     }
 
-    const connectSite = permissionService.getConnectedSite(origin);
-    const prev = connectSite ? CHAINS[connectSite?.chain] : undefined;
     permissionService.setSite(data);
     if (data.isConnected) {
       // rabby:chainChanged event must be sent before chainChanged event
@@ -1221,7 +1821,6 @@ export class WalletController extends BaseController {
         'rabby:chainChanged',
         {
           ...chainItem,
-          prev,
         },
         data.origin
       );
@@ -1292,7 +1891,7 @@ export class WalletController extends BaseController {
     }
   };
   updateConnectSite = (origin: string, data: ConnectedSite) => {
-    const chainItem = findChainByEnum(data.chain);
+    const chainItem = findChain({ enum: data.chain });
 
     if (!chainItem) {
       throw new Error(
@@ -1300,15 +1899,12 @@ export class WalletController extends BaseController {
       );
     }
 
-    const connectSite = permissionService.getConnectedSite(origin);
-    const prev = connectSite ? CHAINS[connectSite?.chain] : undefined;
     permissionService.updateConnectSite(origin, data);
     // rabby:chainChanged event must be sent before chainChanged event
     sessionService.broadcastEvent(
       'rabby:chainChanged',
       {
         ...chainItem,
-        prev,
       },
       data.origin
     );
@@ -1323,7 +1919,9 @@ export class WalletController extends BaseController {
   };
   addConnectedSiteV2 = permissionService.addConnectedSiteV2;
   removeAllRecentConnectedSites = () => {
-    const sites = permissionService.getRecentConnectedSites();
+    const sites = permissionService
+      .getRecentConnectedSites()
+      .filter((item) => !item.isTop);
     sites.forEach((item) => {
       this.removeConnectedSite(item.origin);
     });
@@ -1384,11 +1982,11 @@ export class WalletController extends BaseController {
     }
     return Promise.all(
       GNOSIS_SUPPORT_CHAINS.map(async (chainEnum) => {
-        const chain = CHAINS[chainEnum];
+        const chain = findChain({ enum: chainEnum });
         try {
           const safe = await createSafeService({
             address,
-            networkId: chain.network,
+            networkId: chain!.network,
           });
           const owners = await safe.getOwners();
           if (owners) {
@@ -1491,14 +2089,15 @@ export class WalletController extends BaseController {
   ) => {
     const keyring: GnosisKeyring = this._getKeyringByType(KEYRING_CLASS.GNOSIS);
     if (keyring) {
-      buildinProvider.currentProvider.currentAccount = account.address;
-      buildinProvider.currentProvider.currentAccountType = account.type;
-      buildinProvider.currentProvider.currentAccountBrand = account.brandName;
-      buildinProvider.currentProvider.chainId = networkId;
+      const currentProvider = new EthereumProvider();
+      currentProvider.currentAccount = account.address;
+      currentProvider.currentAccountType = account.type;
+      currentProvider.currentAccountBrand = account.brandName;
+      currentProvider.chainId = networkId;
       await keyring.buildTransaction(
         safeAddress,
         tx,
-        new ethers.providers.Web3Provider(buildinProvider.currentProvider),
+        new ethers.providers.Web3Provider(currentProvider),
         version,
         networkId
       );
@@ -1731,9 +2330,21 @@ export class WalletController extends BaseController {
   };
 
   importWatchAddress = async (address: string) => {
-    const keyring = await this.addWatchAddressOnly(address);
-
-    return this._setCurrentAccountFromKeyring(keyring, -1);
+    try {
+      const keyring = await this.addWatchAddressOnly(address);
+      return this._setCurrentAccountFromKeyring(keyring, -1);
+    } catch (error) {
+      if (error.message?.includes?.('duplicate')) {
+        throw new Error(
+          JSON.stringify({
+            address,
+            anchor: 'DuplicateAccountError',
+          })
+        );
+      } else {
+        throw error;
+      }
+    }
   };
 
   getWalletConnectStatus = (address: string, brandName: string) => {
@@ -1848,17 +2459,23 @@ export class WalletController extends BaseController {
       keyring = new WalletConnect(GET_WALLETCONNECT_CONFIG());
       isNewKey = true;
     }
-    keyring.initConnector(brandName);
+    keyring.initConnector(
+      brandName,
+      getChainList('mainnet').map((item) => item.id)
+    );
     let stashId = curStashId;
     if (isNewKey) {
       stashId = this.addKeyringToStash(keyring);
       eventBus.addEventListener(
         EVENTS.WALLETCONNECT.INIT,
-        ({ address, brandName, chainId }) => {
+        ({ address, brandName, type }) => {
+          if (type !== KEYRING_CLASS.WALLETCONNECT) {
+            return;
+          }
           (keyring as WalletConnectKeyring).init(
             address,
             brandName,
-            !chainId ? 1 : chainId
+            allChainIds
           );
         }
       );
@@ -1920,15 +2537,19 @@ export class WalletController extends BaseController {
     resetConnect: boolean,
     silent?: boolean
   ) => {
-    const keyringType =
-      brandName === KEYRING_CLASS.Coinbase
-        ? KEYRING_CLASS.Coinbase
-        : KEYRING_CLASS.WALLETCONNECT;
-    const keyring: WalletConnectKeyring = this._getKeyringByType(keyringType);
-    if (keyring) {
-      await keyring.closeConnector({ address, brandName }, silent);
-      // reset onAfterConnect
-      // if (resetConnect) keyring.resetConnect();
+    try {
+      const keyringType =
+        brandName === KEYRING_CLASS.Coinbase
+          ? KEYRING_CLASS.Coinbase
+          : KEYRING_CLASS.WALLETCONNECT;
+      const keyring: WalletConnectKeyring = this._getKeyringByType(keyringType);
+      if (keyring) {
+        await keyring.closeConnector({ address, brandName }, silent);
+        // reset onAfterConnect
+        // if (resetConnect) keyring.resetConnect();
+      }
+    } catch (e) {
+      // ignore me
     }
   };
 
@@ -1949,36 +2570,50 @@ export class WalletController extends BaseController {
     realBrandName?: string,
     realBrandUrl?: string
   ) => {
-    let keyring: WalletConnectKeyring, isNewKey;
-    const keyringType = KEYRING_CLASS.WALLETCONNECT;
     try {
-      keyring = this._getKeyringByType(keyringType);
-    } catch {
-      if (stashId !== null && stashId !== undefined) {
-        keyring = stashKeyrings[stashId];
-      } else {
-        const WalletConnectKeyring = keyringService.getKeyringClassForType(
-          keyringType
-        );
-        keyring = new WalletConnectKeyring(GET_WALLETCONNECT_CONFIG());
+      let keyring: WalletConnectKeyring, isNewKey;
+      const keyringType = KEYRING_CLASS.WALLETCONNECT;
+      try {
+        keyring = this._getKeyringByType(keyringType);
+      } catch {
+        if (stashId !== null && stashId !== undefined) {
+          keyring = stashKeyrings[stashId];
+        } else {
+          const WalletConnectKeyring = keyringService.getKeyringClassForType(
+            keyringType
+          );
+          keyring = new WalletConnectKeyring(GET_WALLETCONNECT_CONFIG());
+        }
+        isNewKey = true;
       }
-      isNewKey = true;
+
+      keyring.setAccountToAdd({
+        address,
+        brandName,
+        realBrandName,
+        realBrandUrl,
+      });
+
+      if (isNewKey) {
+        await keyringService.addKeyring(keyring);
+      }
+
+      await keyringService.addNewAccount(keyring);
+
+      this.clearPageStateCache();
+      return this._setCurrentAccountFromKeyring(keyring, -1);
+    } catch (error) {
+      if (error.message?.includes?.('duplicate')) {
+        throw new Error(
+          JSON.stringify({
+            address,
+            anchor: 'DuplicateAccountError',
+          })
+        );
+      } else {
+        throw error;
+      }
     }
-
-    keyring.setAccountToAdd({
-      address,
-      brandName,
-      realBrandName,
-      realBrandUrl,
-    });
-
-    if (isNewKey) {
-      await keyringService.addKeyring(keyring);
-    }
-
-    await keyringService.addNewAccount(keyring);
-    this.clearPageStateCache();
-    return this._setCurrentAccountFromKeyring(keyring, -1);
   };
 
   gridPlusIsConnect = () => {
@@ -2009,20 +2644,18 @@ export class WalletController extends BaseController {
     const serialized = await keyring.serialize();
     const seedWords = serialized.mnemonic;
 
-    this._lastGetAddress = address;
     return seedWords;
   };
 
-  _lastGetAddress = '';
-
-  getLastGetAddress = () => {
-    return this._lastGetAddress;
+  clearAddressPendingTransactions = (address: string, chainId?: number) => {
+    transactionHistoryService.clearPendingTransactions(address, chainId);
+    transactionWatcher.clearPendingTx(address, chainId);
+    transactionBroadcastWatchService.clearPendingTx(address, chainId);
+    return;
   };
 
-  clearAddressPendingTransactions = (address: string) => {
-    transactionHistoryService.clearPendingTransactions(address);
-    transactionWatcher.clearPendingTx(address);
-    transactionBroadcastWatchService.clearPendingTx(address);
+  clearAddressTransactions = (address: string) => {
+    transactionHistoryService.removeList(address);
     return;
   };
 
@@ -2053,9 +2686,9 @@ export class WalletController extends BaseController {
       throw new Error(t('background.error.invalidJson'));
     }
 
-    let wallet;
+    let wallet: Wallet;
     try {
-      wallet = thirdparty.fromEtherWallet(content, password);
+      wallet = await thirdparty.fromEtherWallet(content, password);
     } catch (e) {
       wallet = await Wallet.fromV3(content, password, true);
     }
@@ -2122,6 +2755,8 @@ export class WalletController extends BaseController {
     brand?: string,
     removeEmptyKeyrings?: boolean
   ) => {
+    await this.killWalletConnectConnector(address, brand || type, true, true);
+
     if (removeEmptyKeyrings) {
       const keyring = await keyringService.getKeyringForAccount(address, type);
       this.removeMnemonicKeyringFromStash(keyring);
@@ -2144,6 +2779,7 @@ export class WalletController extends BaseController {
       });
     }
     preferenceService.removeAddressBalance(address);
+    preferenceService.removeCurvePoints(address);
     const current = preferenceService.getCurrentAccount();
     if (
       current?.address === address &&
@@ -2295,7 +2931,7 @@ export class WalletController extends BaseController {
     // keep passphrase is empty string if not set
     passphrase = passphrase || '';
 
-    if (!bip39.validateMnemonic(mnemonic, wordlist)) {
+    if (!HdKeyring.validateMnemonic(mnemonic)) {
       throw new Error(t('background.error.invalidMnemonic'));
     }
     // If import twice use same keyring
@@ -2319,6 +2955,14 @@ export class WalletController extends BaseController {
     }
 
     return result;
+  };
+
+  slip39GetThreshold = (secretShares: string[]) => {
+    return HdKeyring.slip39GetThreshold(secretShares);
+  };
+
+  slip39DecodeMnemonic = (secretShare: string) => {
+    return HdKeyring.slip39DecodeMnemonic(secretShare);
   };
 
   addKeyringToStash = (keyring) => {
@@ -2657,6 +3301,24 @@ export class WalletController extends BaseController {
     return res;
   };
 
+  /**
+   * signTypedData when UI is mounted, and can retry if needed
+   */
+  signTypedDataWithUI = async (
+    type: string,
+    from: string,
+    data: string,
+    options?: any
+  ) => {
+    const fn = () =>
+      waitSignComponentAmounted().then(() => {
+        this.signTypedData(type, from, data as any, options);
+      });
+
+    notificationService.setCurrentRequestDeferFn(fn);
+    return fn();
+  };
+
   signTransaction = async (
     type: string,
     from: string,
@@ -2873,7 +3535,6 @@ export class WalletController extends BaseController {
     preferenceService.setIsDefaultWallet(val);
     const hasOtherProvider = preferenceService.getHasOtherProvider();
     if (hasOtherProvider) {
-      // todo: check is code
       const sites = permissionService
         .getSites()
         .filter((item) => !item.preferMetamask);
@@ -2884,9 +3545,16 @@ export class WalletController extends BaseController {
           site.origin
         );
       });
-      setPopupIcon(val ? 'rabby' : 'metamask');
+    }
+    const isUnlocked = this.isUnlocked();
+    if (isUnlocked) {
+      if (hasOtherProvider) {
+        setPopupIcon(val ? 'rabby' : 'metamask');
+      } else {
+        setPopupIcon('default');
+      }
     } else {
-      setPopupIcon('default');
+      setPopupIcon('locked');
     }
   };
   isDefaultWallet = (origin?: string) =>
@@ -3155,62 +3823,77 @@ export class WalletController extends BaseController {
 
   updateNeedSwitchWalletCheck = preferenceService.updateNeedSwitchWalletCheck;
 
-  revoke = async ({
-    list,
-  }: {
-    list: import('@/utils/approval').ApprovalSpenderItemToBeRevoked[];
-  }) => {
+  revoke = async ({ list }: { list: ApprovalSpenderItemToBeRevoked[] }) => {
     const queue = new PQueue({
       autoStart: true,
       concurrency: 1,
       timeout: undefined,
     });
 
-    const revokeList = list.map((e) => async () => {
-      try {
-        if ('tokenId' in e) {
-          await this.revokeNFTApprove(e);
-        } else {
-          await this.approveToken(e.chainServerId, e.id, e.spender, 0, {
-            ga: {
-              category: 'Security',
-              source: 'tokenApproval',
-            },
-          });
+    const abortRevoke = new AbortController();
+
+    const revokeSummary = summarizeRevoke(list);
+
+    const revokeList: (() => Promise<void>)[] = [
+      ...Object.entries(revokeSummary.permit2Revokes).map(
+        ([permit2Key, item]) => async () => {
+          try {
+            const { chainServerId, permit2ContractId } = decodePermit2GroupKey(
+              permit2Key
+            );
+            if (!permit2ContractId) return;
+            if (chainServerId !== item.chainServerId) {
+              console.warn(`chainServerId ${chainServerId} not match`, item);
+              return;
+            }
+
+            await this.lockdownPermit2({
+              id: permit2ContractId,
+              chainServerId: item.chainServerId,
+              tokenSpenders: item.tokenSpenders,
+            });
+          } catch (error) {
+            abortRevoke.abort();
+            if (!appIsProd) console.error(error);
+            console.error('batch revoke permit2 error', item);
+          }
         }
-      } catch (error) {
+      ),
+      ...revokeSummary.generalRevokes.map((e) => async () => {
+        try {
+          if ('nftTokenId' in e) {
+            await this.revokeNFTApprove(e);
+          } else {
+            await this.approveToken(e.chainServerId, e.id, e.spender, 0, {
+              ga: {
+                category: 'Security',
+                source: 'tokenApproval',
+              },
+            });
+          }
+        } catch (error) {
+          abortRevoke.abort();
+          if (!appIsProd) console.error(error);
+          console.error('revoke error', e);
+        }
+      }),
+    ];
+
+    const waitAbort = new Promise<void>((resolve) => {
+      const onAbort = () => {
         queue.clear();
-        console.error('revoke error', e);
-      }
+        resolve();
+
+        abortRevoke.signal.removeEventListener('abort', onAbort);
+      };
+      abortRevoke.signal.addEventListener('abort', onAbort);
     });
 
     try {
-      await queue.addAll(revokeList);
+      await Promise.race([queue.addAll(revokeList), waitAbort]);
     } catch (error) {
       console.log('revoke error', error);
     }
-  };
-
-  getRecommendNonce = async ({
-    from,
-    chainId,
-  }: {
-    from: string;
-    chainId: number;
-  }) => {
-    const chain = Object.values(CHAINS).find((item) => item.id === chainId);
-    if (!chain) {
-      throw new Error(t('background.error.invalidChainId'));
-    }
-    const onChainNonce = await this.requestETHRpc(
-      {
-        method: 'eth_getTransactionCount',
-        params: [from, 'latest'],
-      },
-      chain.serverId
-    );
-    const localNonce = (await this.getNonceByChain(from, chainId)) || 0;
-    return `0x${BigNumber.max(onChainNonce, localNonce).toString(16)}`;
   };
 
   getSecurityEngineRules = () => {
@@ -3521,16 +4204,22 @@ export class WalletController extends BaseController {
     if (isNewKey) {
       stashId = this.addKeyringToStash(keyring);
 
-      eventBus.addEventListener(EVENTS.WALLETCONNECT.INIT, ({ address }) => {
-        const uri = keyring.connect({
-          address,
-        });
+      eventBus.addEventListener(
+        EVENTS.WALLETCONNECT.INIT,
+        ({ address, type }) => {
+          if (type !== KEYRING_CLASS.Coinbase) {
+            return;
+          }
+          const uri = keyring.connect({
+            address,
+          });
 
-        eventBus.emit(EVENTS.broadcastToUI, {
-          method: EVENTS.WALLETCONNECT.INITED,
-          params: { uri },
-        });
-      });
+          eventBus.emit(EVENTS.broadcastToUI, {
+            method: EVENTS.WALLETCONNECT.INITED,
+            params: { uri },
+          });
+        }
+      );
 
       keyring.on('message', (data) => {
         if (data.status === 'CHAIN_CHANGED') {
@@ -3593,42 +4282,65 @@ export class WalletController extends BaseController {
    * disable approval management and transaction history when level is 1
    * disable total balance refresh and level 1 content when level is 2
    */
-  getAPIConfig = cached(async () => {
-    interface IConfig {
-      data: {
-        level: number;
-        authorized: {
-          enable: boolean;
+  getAPIConfig = cached(
+    'getAPIConfig',
+    async () => {
+      interface IConfig {
+        data: {
+          level: number;
+          authorized: {
+            enable: boolean;
+          };
+          balance: {
+            enable: boolean;
+          };
+          history: {
+            enable: boolean;
+          };
         };
-        balance: {
-          enable: boolean;
-        };
-        history: {
-          enable: boolean;
-        };
-      };
-    }
-    try {
-      const config = await fetch('https://static.debank.com/rabby/config.json');
-      const { data } = (await config.json()) as IConfig;
-      return data.level;
-    } catch (e) {
-      return 0;
-    }
-  }, 10000);
+      }
+      try {
+        const config = await fetch(
+          'https://static.debank.com/rabby/config.json'
+        );
+        const { data } = (await config.json()) as IConfig;
+        return data.level;
+      } catch (e) {
+        return 0;
+      }
+    },
+    { timeout: 10000, maxSize: 0 }
+  ).fn;
 
   rabbyPointVerifyAddress = async (params?: {
     code?: string;
     claimSnapshot?: boolean;
     claimNumber?: number;
+    // text: string;
   }) => {
     const { code, claimSnapshot } = params || {};
     const account = await preferenceService.getCurrentAccount();
     if (!account) throw new Error(t('background.error.noCurrentAccount'));
-    const claimText = `${account?.address} Claims Rabby Points`;
-    const verifyAddr = `Rabby Wallet wants you to sign in with your address:\n${account?.address}`;
+    let claimText = '';
+    let verifyText = '';
+
+    if (claimSnapshot) {
+      claimText = (
+        await wallet.openapi.getRabbyClaimTextV2({
+          id: account?.address,
+          invite_code: code,
+        })
+      )?.text; //`${account?.address} Claims Rabby Points`;
+    } else {
+      verifyText = (
+        await wallet.openapi.getRabbySignatureTextV2({
+          id: account?.address,
+        })
+      )?.text; //`Rabby Wallet wants you to sign in with your address:\n${account?.address}`;
+    }
+
     const msg = `0x${Buffer.from(
-      claimSnapshot ? claimText : verifyAddr,
+      claimSnapshot ? claimText : verifyText,
       'utf-8'
     ).toString('hex')}`;
 
@@ -3640,7 +4352,7 @@ export class WalletController extends BaseController {
     this.setRabbyPointsSignature(account.address, signature);
     if (claimSnapshot) {
       try {
-        await wallet.openapi.claimRabbyPointsSnapshot({
+        await wallet.openapi.claimRabbyPointsSnapshotV2({
           id: account?.address,
           invite_code: code,
           signature,
@@ -3657,6 +4369,147 @@ export class WalletController extends BaseController {
     }
     return signature;
   };
+
+  addCustomTestnet = async (
+    chain: Parameters<typeof customTestnetService.add>[0],
+    ctx?: {
+      ga?: {
+        source?: string;
+      };
+    }
+  ) => {
+    const source = ctx?.ga?.source || 'setting';
+
+    const res = await customTestnetService.add(chain);
+    if (!('error' in res)) {
+      matomoRequestEvent({
+        category: 'Custom Network',
+        action: 'Success Add Network',
+        label: `${source}_${String(chain.id)}`,
+      });
+    }
+    return res;
+  };
+  updateCustomTestnet = customTestnetService.update;
+  removeCustomTestnet = customTestnetService.remove;
+  getCustomTestnetList = customTestnetService.getList;
+
+  getCustomTestnetNonce = async ({
+    address,
+    chainId,
+  }: {
+    address: string;
+    chainId: number;
+  }) => {
+    const count = await customTestnetService.getTransactionCount({
+      address,
+      chainId,
+      blockTag: 'latest',
+    });
+    const localNonce = (await wallet.getNonceByChain(address, chainId)) || 0;
+    return BigNumber.max(count, localNonce).toNumber();
+  };
+
+  estimateCustomTestnetGas = customTestnetService.estimateGas;
+
+  getCustomTestnetGasPrice = customTestnetService.getGasPrice;
+
+  getCustomTestnetGasMarket = customTestnetService.getGasMarket;
+
+  getCustomTestnetToken = customTestnetService.getToken;
+  removeCustomTestnetToken = customTestnetService.removeToken;
+  addCustomTestnetToken = customTestnetService.addToken;
+  getCustomTestnetTokenList = customTestnetService.getTokenList;
+  isAddedCustomTestnetToken = customTestnetService.hasToken;
+  getCustomTestnetTx = customTestnetService.getTx;
+  getCustomTestnetTxReceipt = customTestnetService.getTransactionReceipt;
+  // getCustomTestnetTokenListWithBalance = customTestnetService.getTokenListWithBalance;
+
+  getUsedCustomTestnetChainList = async () => {
+    const ids = new Set<number>();
+    Object.values(transactionHistoryService.store.transactions).forEach(
+      (item) => {
+        Object.values(item).forEach((txGroup) => {
+          ids.add(txGroup.chainId);
+        });
+      }
+    );
+    const chainList = Array.from(ids).filter(
+      (id) =>
+        !findChain({
+          id,
+        })
+    );
+    const res = await openapiService.getChainListByIds({
+      ids: chainList.join(','),
+    });
+    return res;
+  };
+
+  hasPrivateKeyInWallet = async (address: string) => {
+    let pk: any = null;
+    try {
+      pk = await keyringService.getKeyringForAccount(
+        address,
+        KEYRING_TYPE.SimpleKeyring
+      );
+    } catch (e) {
+      // just ignore the error
+    }
+    let mnemonic: any = null;
+    try {
+      mnemonic = await keyringService.getKeyringForAccount(
+        address,
+        KEYRING_TYPE.HdKeyring
+      );
+    } catch (e) {
+      // just ignore the error
+    }
+    if (!pk && !mnemonic) return false;
+    return pk?.type || mnemonic?.type;
+  };
+
+  syncMainnetChainList = syncChainService.syncMainnetChainList;
+
+  tryUnlock = async () => {
+    await keyringService.tryUnlock();
+    this.syncPopupIcon();
+  };
+
+  syncPopupIcon = () => {
+    if (!this.isBooted()) {
+      setPopupIcon('default');
+    } else if (this.isUnlocked()) {
+      const hasOtherProvider = preferenceService.getHasOtherProvider();
+      const isDefaultWallet = preferenceService.getIsDefaultWallet();
+      if (!hasOtherProvider) {
+        setPopupIcon('default');
+      } else {
+        setPopupIcon(isDefaultWallet ? 'rabby' : 'metamask');
+      }
+    } else {
+      setPopupIcon('locked');
+    }
+  };
+  setIsHideEcologyNoticeDict = preferenceService.setIsHideEcologyNoticeDict;
+
+  getRecommendGas = getRecommendGas;
+  getRecommendNonce = getRecommendNonce;
+  ethSendTransaction = async (
+    ...args: Parameters<typeof providerController.ethSendTransaction>
+  ) => {
+    try {
+      const res = await providerController.ethSendTransaction(...args);
+      return res;
+    } catch (e) {
+      const signingTxId = args?.[0]?.approvalRes?.signingTxId;
+      if (signingTxId != null) {
+        this.removeSigningTx(signingTxId);
+      }
+
+      throw e;
+    }
+  };
 }
 
 const wallet = new WalletController();
@@ -3666,4 +4519,5 @@ autoLockService.onAutoLock = async () => {
     method: EVENTS.LOCK_WALLET,
   });
 };
+
 export default wallet;

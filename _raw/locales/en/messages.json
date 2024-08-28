@@ -26,7 +26,7 @@
       }
     },
     "chainList": {
-      "title": "{{count}} chains supported",
+      "title": "{{count}} chains Integrated",
       "mainnet": "Mainnets",
       "testnet": "Testnets"
     },
@@ -35,14 +35,14 @@
       "gasLimitNotEnough": "Gas limit is less than 21000. Transaction can't be submitted",
       "gasLimitLessThanExpect": "Gas limit is low. There is 1% chance that the transaction may fail.",
       "gasLimitLessThanGasUsed": "Gas limit is too low. There is 95% chance that the transaction may fail.",
-      "nativeTokenNotEngouthForGas": "You do not have enough gas in your wallet",
+      "nativeTokenNotEngouthForGas": "Gas balance is not enough for transaction",
       "nonceLowerThanExpect": "Nonce is too low, the minimum should be {{0}}",
       "canOnlyUseImportedAddress": "You can only use imported addresses to sign",
       "multiSigChainNotMatch": "Multi-signature addresses are not on this chain and cannot initiate transactions",
       "safeAddressNotSupportChain": "Current safe address is not supported on {{0}} chain",
       "noGasRequired": "No gas required",
       "gasSelectorTitle": "Gas",
-      "failToFetchGasCost": "Fail to fetch gas cost",
+      "failToFetchGasCost": "Fail to estimate gas",
       "gasMoreButton": "More",
       "manuallySetGasLimitAlert": "You have manually set the Gas limit to",
       "gasNotRequireForSafeTransaction": "Gas fee is not required for Safe transactions",
@@ -56,7 +56,7 @@
       "nonceTitle": "Nonce",
       "gasLimitModifyOnlyNecessaryAlert": "Modify only when necessary",
       "gasPriceMedian": "Median of last 100 on-chain transactions: ",
-      "myNativeTokenBalance": "My {{symbol}} balance: {{amount}} {{symbol}}",
+      "myNativeTokenBalance": "My Gas balance: ",
       "gasLimitEmptyAlert": "Please input gas limit",
       "gasLimitMinValueAlert": "Gas limit should be more than 21000",
       "balanceChange": {
@@ -70,8 +70,13 @@
         "nftOut": "NFT out"
       },
       "enoughSafeSigCollected": "Enough signature collected",
-      "moreSafeSigNeeded": "{{0}} more confirmation needed",
+      "moreSafeSigNeeded": "Need {{0}} more signatures to confirm",
       "safeAdminSigned": "Signed",
+      "customRPCErrorModal": {
+        "title": "Custom RPC Error",
+        "content": "Your custom RPC is unavailable now. You can disable it and continue signing using Rabby's official RPC",
+        "button": "Disable Custom RPC"
+      },
       "swap": {
         "title": "Swap Token",
         "payToken": "Pay",
@@ -81,7 +86,7 @@
         "simulationFailed": "Transaction simulation failed",
         "simulationNotSupport": "Transaction simulation not supported on this chain",
         "minReceive": "Minimum Receive",
-        "slippageFailToLoad": "Slippage tolerance fail to load",
+        "slippageFailToLoad": "Fail to load",
         "slippageTolerance": "Slippage tolerance",
         "receiver": "Receiver",
         "notPaymentAddress": "Not the payment address",
@@ -100,27 +105,32 @@
         "sendToken": "Send token",
         "sendTo": "Send to",
         "receiverIsTokenAddress": "Token address",
-        "contractNotOnThisChain": "Contract address not on this chain",
-        "notTopupAddress": "Not top up address",
+        "contractNotOnThisChain": "Not on this chain",
+        "notTopupAddress": "Not a deposit address",
         "tokenNotSupport": "{{0}} not supported",
         "onMyWhitelist": "On my whitelist",
         "notOnThisChain": "Not on this chain",
         "cexAddress": "CEX address",
         "addressBalanceTitle": "Address balance",
         "whitelistTitle": "Whitelist",
-        "notOnWhitelist": "Not on my whitelist"
+        "notOnWhitelist": "Not on my whitelist",
+        "scamAddress": "Scam address",
+        "fromMySeedPhrase": "From my seed phrase",
+        "fromMyPrivateKey": "From my private key"
       },
       "tokenApprove": {
         "title": "Token Approval",
         "approveToken": "Approve token",
         "myBalance": "My balance",
         "approveTo": "Approve to",
-        "eoaAddress": "EOA address",
-        "trustValueLessThan": "Trust value ≤ {{value}}",
-        "deployTimeLessThan": "Deployed time < {{value}} days",
-        "amountPopupTitle": "Amount",
+        "eoaAddress": "EOA",
+        "trustValueLessThan": "≤ {{value}}",
+        "deployTimeLessThan": "< {{value}} days",
+        "amountPopupTitle": "Approve amount",
         "flagByRabby": "Flagged by Rabby",
-        "contractTrustValueTip": "Trust value refers to the total token approved and exposed to this contract. A low trust value indicates either risk or inactivity for 180 days."
+        "contractTrustValueTip": "Trust value refers to the total asset value spent by this contract. A low trust value indicates either risk or inactivity for 180 days.",
+        "amount": "Approve Amount:",
+        "exceed": "Exceeds your current balance"
       },
       "revokeTokenApprove": {
         "title": "Revoke Token Approval",
@@ -134,7 +144,7 @@
       "nftApprove": {
         "title": "NFT Approval",
         "approveNFT": "Approve NFT",
-        "nftContractTrustValueTip": "Trust value refers to the top NFT approved and exposed to this contract. A low trust value indicates either risk or inactivity for 180 days."
+        "nftContractTrustValueTip": "Trust value refers to the top NFT value spent by this contract. A low trust value indicates either risk or inactivity for 180 days."
       },
       "revokeNFTApprove": {
         "title": "Revoke NFT Approval",
@@ -145,7 +155,7 @@
         "approveCollection": "Approve collection"
       },
       "revokeNFTCollectionApprove": {
-        "title": "Revoke NFT Collection Approval",
+        "title": "Revoke NFT Collection",
         "revokeCollection": "Revoke collection"
       },
       "deployContract": {
@@ -168,10 +178,22 @@
         "operationABIDesc": "Operation is decoded from ABI",
         "operationCantDecode": "Operation is not decoded",
         "payNativeToken": "Pay {{symbol}}",
-        "suspectedReceiver": "Exception Address"
+        "suspectedReceiver": "Exception Address",
+        "receiver": "Receiver Address"
       },
       "revokePermit2": {
-        "title": "Revoke Permit2 Token Approval"
+        "title": "Revoke Permit2 Approval"
+      },
+      "batchRevokePermit2": {
+        "title": "Batch Revoke Permit2 Approval"
+      },
+      "revokePermit": {
+        "title": "Revoke Permit Token Approval"
+      },
+      "assetOrder": {
+        "title": "Asset Order",
+        "listAsset": "List asset",
+        "receiveAsset": "Receive asset"
       },
       "unknownAction": "Unknown Signature Type",
       "interactContract": "Interact contract",
@@ -192,7 +214,8 @@
       "decodedTooltip": "This signature is decoded by Rabby Wallet",
       "signTransactionOnChain": "Sign {{chain}} Transaction",
       "viewRaw": "View Raw",
-      "unknownActionType": "Unknown action type",
+      "chain": "Chain",
+      "unknownActionType": "Unknown Action Type",
       "sigCantDecode": "This signature can't be decoded by Rabby Wallet",
       "nftCollection": "NFT Collection",
       "floorPrice": "Floor price",
@@ -283,7 +306,20 @@
         "descTipWarningPrivacy": "Signature may verify address ownership",
         "descTipWarningAssets": "Signature may cause asset change",
         "descTipWarningBoth": "Signature may cause asset change and verify address ownership"
-      }
+      },
+      "protocol": "Protocol",
+      "yes": "Yes",
+      "no": "No",
+      "hasInteraction": "Interacted before",
+      "address": "Address",
+      "advancedSettings": "Advanced Settings",
+      "amount": "Amount",
+      "contract": "Smart contract",
+      "trustValueTitle": "Trust value",
+      "typedDataMessage": "Sign Typed Data",
+      "label": "Label",
+      "addressSource": "Address Source",
+      "maxPriorityFeeDisabledAlert": "Please set Gas Price first"
     },
     "signFooterBar": {
       "requestFrom": "Request from",
@@ -297,7 +333,16 @@
       "keystoneNotConnected": "Keystone is not connected",
       "keystoneConnected": "Keystone is connected",
       "ledgerConnected": "Ledger is connected",
-      "signAndSubmitButton": "Sign and Create",
+      "signAndSubmitButton": "Sign",
+      "gasless": {
+        "unavailable": "Your Gas Balance is not enough",
+        "notEnough": "Gas balance is not enough",
+        "GetFreeGasToSign": "Get Free Gas to sign",
+        "rabbyPayGas": "Rabby'll pay for the gas needed – just sign on",
+        "customRpcUnavailableTip": "Custom RPCs are not supported for Free Gas",
+        "walletConnectUnavailableTip": "Mobile wallet connected via WalletConnect is not supported for Free Gas",
+        "watchUnavailableTip": "Watch-only address is not supported for Free Gas"
+      },
       "walletConnect": {
         "connectedButCantSign": "Connected but unable to sign.",
         "switchToCorrectAddress": "Please switch to the correct address in mobile wallet",
@@ -500,7 +545,8 @@
           "noCost": "No Gas cost"
         },
         "SkipNonceAlert": {
-          "alert": "Nonce #{{nonce}} skipped on {{chainName}} chain. This  may cause pending transactions ahead. <5></5> <6>Submit a tx</6> <7></7> on chain to resolve"
+          "alert": "Nonce #{{nonce}} skipped on {{chainName}} chain. This  may cause pending transactions ahead. <5></5> <6>Submit a tx</6> <7></7> on chain to resolve",
+          "clearPendingAlert": "{{chainName}} Transaction ({{nonces}}) has been pending for over 3 minutes. You can <5></5> <6>clear pending transactions on this chain</6> <7></7> and initiate a new one."
         },
         "PredictTime": {
           "time": "Predicted to be packed in {{time}}",
@@ -545,7 +591,7 @@
           "custom": "Custom",
           "fast": "Instant",
           "normal": "Fast",
-          "slow": "Standard"
+          "slow": "Normal"
         },
         "popupDesc": "The gas cost will be reserved from the transfer amount based on the gas price you set",
         "popupTitle": "Set Gas Price (Gwei)"
@@ -609,7 +655,8 @@
       }
     },
     "sendTokenComponents": {
-      "GasReserved": "Reserved <1>0</1> {{ tokenName }} for gas cost"
+      "GasReserved": "Reserved <1>0</1> {{ tokenName }} for gas cost",
+      "SwitchReserveGas": "Reserve Gas <1 />"
     },
     "sendNFT": {
       "header": {
@@ -655,6 +702,7 @@
         "table": {
           "bodyEmpty": {
             "loadingText": "Loading...",
+            "noDataText": "No Approvals",
             "noMatchText": "No Match"
           }
         },
@@ -665,7 +713,12 @@
         "RevokeButton": {
           "btnText_zero": "Revoke",
           "btnText_one": "Revoke ({{count}})",
-          "btnText_other": "Revoke ({{count}})"
+          "btnText_other": "Revoke ({{count}})",
+          "permit2Batch": {
+            "modalContent": "Approvals from the same Permit2 contract would be packaged together under the same signature.",
+            "modalTitle_one": "A total of <2>{{count}}</2> signature is required",
+            "modalTitle_other": "A total of <2>{{count}}</2> signatures is required"
+          }
         },
         "ViewMore": {
           "text": "View more"
@@ -684,7 +737,7 @@
             "myApprovalTime": "My Approval Time"
           },
           "columnTip": {
-            "contractTrustValue": "Trust value refers to the total asset value approved and exposed to this contract. A low trust value indicates either risk or inactivity for 180 days.",
+            "contractTrustValue": "Trust value refers to the total asset value spent by this contract. A low trust value indicates either risk or inactivity for 180 days.",
             "contractTrustValueWarning": "The contract trust value < $100,000",
             "contractTrustValueDanger": "The contract trust value < $10,000"
           }
@@ -709,8 +762,42 @@
         "subTitleTokenAndNFT": "Approved Token and NFT",
         "subTitleContract": "Approved to the following Contracts",
         "selectAll": "Select All",
+        "unSelectAll": "Unselect All",
         "confirm": "Confirm {{ selectedCount }}",
-        "title": "Approvals"
+        "title": "Approvals",
+        "tooltipPermit2": "This approval is approved via Permit2 contract:\n{{ permit2Id }}"
+      },
+      "revokeModal": {
+        "confirmRevokePrivateKey": "Using a seed phrase or private key address, you can batch revoke {{count}} approvals with 1 click.",
+        "confirmRevokeLedger": "Using a Ledger address, you can batch revoke {{count}} approvals with 1 click.",
+        "batchRevoke": "Batch Revoke",
+        "revokeOneByOne": "Revoke One by One",
+        "revoked": "Revoked:",
+        "totalRevoked": "Total:",
+        "approvalCount_zero": "{{count}} approval",
+        "approvalCount_one": "{{count}} approval",
+        "approvalCount_other": "{{count}} approvals",
+        "signAndStartRevoke": "Sign and Start Revoke",
+        "pause": "Pause",
+        "resume": "Continue",
+        "done": "Done",
+        "confirmTitle": "Batch Revoke with One Click",
+        "cancelTitle": "Cancel Remaining Revokes",
+        "confirm": "Confirm",
+        "cancelBody": "If you close this page, the remaining revokes will not be executed.",
+        "gasNotEnough": "Insufficient Gas to submit",
+        "gasTooHigh": "Gas fee is high",
+        "submitTxFailed": "Fail to Submit",
+        "defaultFailed": "Transaction failed",
+        "stillRevoke": "Still Revoke",
+        "paused": "Paused",
+        "waitInQueue": "Wait in queue",
+        "revokeWithLedger": "Start Revoke with Ledger",
+        "connectLedger": "Connect Ledger",
+        "ledgerSended": "Please sign the request on Ledger ({{current}}/{{total}})",
+        "ledgerSending": "Sending signing request ({{current}}/{{total}})",
+        "ledgerAlert": "Please open Ethereum App on your Ledger device",
+        "ledgerSigned": "Signed. Creating transaction ({{current}}/{{total}})"
       }
     },
     "gasTopUp": {
@@ -747,11 +834,12 @@
       "no-transaction-records": "No transaction records",
       "swap-history": "Swap history",
       "InSufficientTip": "Insufficient balance to do transaction simulation and gas estimation. Original aggregator quotes are displayed",
-      "testnet-is-not-supported": "Testnet is not supported",
+      "testnet-is-not-supported": "Custom network is not supported",
       "not-supported": "Not supported",
       "slippage-adjusted-refresh-quote": "Slippage adjusted. Refresh quote.",
       "price-expired-refresh-quote": "Price expired. Refresh quote.",
       "approve-x-symbol": "Approve {{symbol}}",
+      "approve-and-swap": "Approve and Swap via {{name}}",
       "swap-via-x": "Swap via {{name}}",
       "get-quotes": "Get quotes",
       "chain": "Chain",
@@ -761,11 +849,15 @@
       "amount-in": "Amount in {{symbol}}",
       "unlimited-allowance": "Unlimited allowance",
       "insufficient-balance": "Insufficient balance",
+      "hidden-no-quote-rates_one": "{{count}} rate unavailable",
+      "hidden-no-quote-rates_other": "{{count}} rates unavailable",
+      "Gas-fee-too-high": "Gas fee too high",
       "rabby-fee": "Rabby fee",
       "preferMEV": "Prefer MEV Guarded",
       "preferMEVTip": "Enable \"MEV Guarded\" feature for Ethereum swaps to reduce sandwich attack risks. Note: this feature is not supported if you use a custom RPC or wallet connect address",
       "minimum-received": "Minimum received",
       "there-is-no-fee-and-slippage-for-this-trade": "There is no slippage for this trade",
+      "no-slippage-for-wrap": "No slippage for Wrap",
       "approve-tips": "1.Approve → 2.Swap",
       "best": "Best",
       "unable-to-fetch-the-price": "Unable to fetch the price",
@@ -782,7 +874,7 @@
       "rates-from-cex": "Rates from CEX",
       "edit": "Edit",
       "tradingSettingTips": "{{viewCount}} exchanges offer quotes, and {{tradeCount}} enable trading",
-      "the-following-swap-rates-are-found": "Found following swap rates",
+      "the-following-swap-rates-are-found": "Found following rates",
       "sort-with-gas": "Sort with gas",
       "est-payment": "Est. Payment:",
       "est-receiving": "Est. Receiving:",
@@ -807,7 +899,80 @@
       "tradingSettingTip2": "2. Rabby is not liable for any risks arising from the contract of the exchanges",
       "gas-fee": "GasFee: {{gasUsed}}",
       "estimate": "Estimate:",
-      "actual": "Actual:"
+      "actual": "Actual:",
+      "max": "MAX",
+      "two-step-approve": "Sign 2 transactions to change allowance",
+      "two-step-approve-details": "Token USDT requires 2 transactions to change allowance.First you would need to reset allowance to zero, and only then set new allowance value.",
+      "process-with-two-step-approve": "Proceed with two step approve",
+      "fetch-best-quote": "Fetching the Best quote",
+      "usd-after-fees": "≈ {{usd}} after fees",
+      "no-fees-for-wrap": "No Rabby fees for Wrap",
+      "No-available-quote": "No available quote",
+      "price-impact": "Price Impact",
+      "loss-tips": "You're losing {{usd}}. Try a smaller amount in a small market.",
+      "Auto": "Auto",
+      "rabbyFee": {
+        "title": "Rabby fee",
+        "swapDesc": "Rabby Wallet will always find the best possible rate from top aggregators and verify the reliability of their offers. Rabby charges a 0.25% fee (0% for wrapping), which is automatically included in the quote.",
+        "bridgeDesc": "Rabby Wallet will always find the best possible rate from top aggregators and verify the reliability of their offers. Rabby charges a 0.25% fee, which is automatically included in the quote.",
+        "wallet": "Wallet",
+        "rate": "Fee rate",
+        "button": "Got it"
+      }
+    },
+    "bridge": {
+      "title": "Bridge",
+      "history": "Bridge history",
+      "the-following-bridge-route-are-found": "Found following bridge route",
+      "no-transaction-records": "No transaction records",
+      "pendingTip": "Tx submitted. If the tx is pending for long hours, you can try to clear pending in settings.",
+      "Pending": "Pending",
+      "completedTip": "Transaction on chain, decoding data to generate record",
+      "Completed": "Completed",
+      "estimate": "Estimate:",
+      "actual": "Actual:",
+      "gas-fee": "GasFee: {{gasUsed}}",
+      "gas-x-price": "Gas price: {{price}} Gwei.",
+      "detail-tx": "Detail",
+      "unlimited-allowance": "Unlimited allowance",
+      "insufficient-balance": "Insufficient balance",
+      "bridgeTo": "Bridge To",
+      "BridgeTokenPair": "Bridge Token Pair",
+      "tokenPairPlaceholder": "Select Token Pair",
+      "Amount": "Amount",
+      "getRoutes": "Get routes",
+      "slippage-adjusted-refresh-quote": "Slippage adjusted. Refresh route.",
+      "price-expired-refresh-route": "Price expired. Refresh route.",
+      "approve-x-symbol": "Approve {{symbol}}",
+      "approve-and-bridge": "Approve and Bridge on {{name}}",
+      "need-to-approve-token-before-bridge": "Need to approve token before bridge",
+      "via-bridge": "via {{bridge}}",
+      "duration": "{{duration}} min",
+      "estimated-value": "≈ {{value}} after fees",
+      "best": "Best",
+      "bridge-cost": "Bridge cost",
+      "rabby-fee": "Rabby fee",
+      "bridge-via-x": "Bridge on {{name}}",
+      "no-route-found": "No route found",
+      "aggregator-not-enabled": "This aggregator is not enabled to trade by you.",
+      "enable-it": "Enable it",
+      "settingModal": {
+        "title": "Enable Bridge Aggregators to trade",
+        "confirm": "Confirm",
+        "SupportedBridge": "Supported Bridge:",
+        "confirmModal": {
+          "title": "Enable Trading with this Aggregator",
+          "tip1": "1. Once enabled, you will interact directly with the contract from this aggregator.",
+          "tip2": "2. Rabby is not liable for any risks arising from the contract of this aggregator",
+          "i-understand-and-accept-it": "I understand and accept it"
+        }
+      },
+      "tokenPairDrawer": {
+        "title": "Select from supported token pair",
+        "tokenPair": "Token Pair",
+        "balance": "Balance Value",
+        "noData": "No Supported Token Pair"
+      }
     },
     "manageAddress": {
       "no-address": "No address",
@@ -867,7 +1032,9 @@
           "rabbyPoints": "Rabby Points",
           "more": "More",
           "manageAddress": "Manage Address",
-          "nft": "NFT"
+          "nft": "NFT",
+          "ecology": "Ecosystem",
+          "bridge": "Bridge"
         },
         "comingSoon": "Coming soon",
         "soon": "Soon",
@@ -904,9 +1071,10 @@
         "disconnectRecentlyUsed": {
           "title_one": "Disconnect <strong>{{count}}</strong> connected Dapp",
           "title_other": "Disconnect <strong>{{count}}</strong> connected Dapps",
-          "description": "Pinned DApps will remain connected"
+          "description": "Pinned DApps will remain connected",
+          "title": "Disconnect recently used <strong>{{count}}</strong> DApps"
         },
-        "title": "Connected Dapp",
+        "title": "Connected Dapps",
         "pinned": "Pinned",
         "noPinnedDapps": "No pinned dapps",
         "dragToSort": "Drag to sort",
@@ -949,14 +1117,19 @@
       "rabbyBadge": {
         "imageLabel": "rabby badge",
         "title": "Claim Rabby Badge for",
+        "freeGasTitle": "Claim Free Gas Badge for",
         "enterClaimCode": "Enter claim code",
         "swapTip": "You need to complete a swap with notable dex within Rabby Wallet first.",
+        "freeGasTip": "Please sign a transaction using Free Gas. The 'Free Gas' button will appear automatically when your gas is not enough.",
+        "learnMore": "Learn More",
         "goToSwap": "Go to Swap",
         "claim": "Claim",
-        "viewYourClaimCode": "View your claim code",
+        "viewYourClaimCode": "View your claim code on DeBank",
         "noCode": "You haven’t activated claim code for this address",
+        "freeGasNoCode": "Please click the button below to visit DeBank and get the claim code using your current address first.",
         "learnMoreOnDebank": "Learn more on DeBank",
         "rabbyValuedUserNo": "Rabby Valued User No.{{num}}",
+        "rabbyFreeGasUserNo": "Rabby Free Gas User No.{{num}}",
         "claimSuccess": "Claim Success",
         "viewOnDebank": "View on DeBank"
       },
@@ -993,6 +1166,7 @@
         "clearPendingTip2": "This will not change the balances in your accounts or require you to re-enter your seed phrase. All your assets and accounts information will remain secure.",
         "autoLockTime": "Auto lock time",
         "claimRabbyBadge": "Claim Rabby Badge!",
+        "claimFreeGasBadge": "Claim Rabby Free Gas Badge!",
         "cancel": "Cancel",
         "enableWhitelist": "Enable Whitelist",
         "disableWhitelist": "Disable Whitelist",
@@ -1011,22 +1185,26 @@
           "lockWallet": "Lock Wallet",
           "signatureRecord": "Signature Record",
           "manageAddress": "Manage Address",
-          "connectedDapp": "Connected Dapp"
+          "connectedDapp": "Connected Dapps",
+          "searchDapps": "Search Dapps",
+          "gasTopUp": "Gas Top Up",
+          "rabbyPoints": "Rabby Points"
         },
         "settings": {
           "label": "Settings",
           "enableWhitelistForSendingAssets": "Enable Whitelist For Sending Assets",
-          "customRpc": "Custom RPC",
+          "customRpc": "Modify RPC URL",
           "metamaskPreferredDapps": "MetaMask Preferred Dapps",
           "currentLanguage": "Current Language",
           "enableTestnets": "Enable Testnets",
           "toggleThemeMode": "Theme Mode",
-          "themeMode": "Theme Mode"
+          "themeMode": "Theme Mode",
+          "customTestnet": "Add Custom Network"
         },
         "aboutUs": "About us",
         "currentVersion": "Current Version",
         "updateAvailable": "Update Available",
-        "supportedChains": "Supported Chains",
+        "supportedChains": "Integrated Chains",
         "followUs": "Follow Us",
         "testnetBackendServiceUrl": "Testnet Backend Service URL",
         "clearWatchMode": "Clear Watch Mode",
@@ -1045,8 +1223,10 @@
         "send": "Send",
         "receive": "Receive",
         "noTransactions": "No Transactions",
-        "customizedButton": "customized",
-        "blockedButton": "blocked"
+        "customizedButton": "custom token",
+        "customizedButtons": "custom tokens",
+        "blockedButton": "blocked token",
+        "blockedButtons": "blocked tokens"
       },
       "assets": {
         "usdValue": "USD VALUE",
@@ -1085,17 +1265,42 @@
           "summaryDescription": "All assets in protocols (e.g. LP tokens) are resolved to the underlying assets for statistical calculations",
           "noMatch": "No Match",
           "lowValueDescription": "Low value assets will be shown here",
-          "lowValueAssets": "{{count}} low value assets"
+          "lowValueAssets_0": "{{count}} low value token",
+          "lowValueAssets_one": "{{count}} low value token",
+          "lowValueAssets_other": "{{count}} low value tokens"
         },
         "noAssets": "No assets",
         "blockLinkText": "Search address to block token",
         "blockDescription": "Token blocked by you will be shown here",
         "unfoldChain": "Unfold 1 chain",
         "unfoldChainPlural": "Unfold {{moreLen}} chains",
-        "customLinkText": "Search address to add custom token",
+        "customButtonText": "Add custom token",
         "customDescription": "Custom token added by you will be shown here",
         "comingSoon": "Coming Soon...",
-        "searchPlaceholder": "Tokens"
+        "searchPlaceholder": "Tokens",
+        "AddMainnetToken": {
+          "title": "Add Custom Token",
+          "selectChain": "Select chain",
+          "searching": "Searching Token",
+          "tokenAddress": "Token Address",
+          "tokenAddressPlaceholder": "Token Address",
+          "notFound": "Token not found",
+          "isBuiltInToken": "Token already supported"
+        },
+        "AddTestnetToken": {
+          "title": "Add Custom Network Token",
+          "selectChain": "Select chain",
+          "searching": "Searching Token",
+          "tokenAddress": "Token Address",
+          "tokenAddressPlaceholder": "Token Address",
+          "notFound": "Token not found"
+        },
+        "TestnetAssetListContainer": {
+          "add": "Token",
+          "addTestnet": "Network"
+        },
+        "noTestnetAssets": "No Custom Network Assets",
+        "addTokenEntryText": "Token"
       },
       "hd": {
         "howToConnectLedger": "How to Connect Ledger",
@@ -1105,7 +1310,7 @@
           "doc1": "Plug in a single Ledger",
           "doc2": "Enter pin to unlock",
           "doc3": "Open Ethereum App",
-          "reconnect": "If it doesn't work, please try <1>reconnecting from the beginning.</1>"
+          "reconnect": "If it doesn't work, try <1>reconnecting from the beginning.</1>"
         },
         "keystone": {
           "title": "*USB connect only for Keystone 3(Pro)",
@@ -1119,10 +1324,14 @@
           "doc1": "Plug in a single imKey",
           "doc2": "Enter pin to unlock"
         },
-        "howToConnectImKey": "How to Connect imKey"
+        "howToConnectImKey": "How to Connect imKey",
+        "ledgerIsDisconnected": "Your ledger is not connected"
       },
       "GnosisWrongChainAlertBar": {
         "warning": "Safe address does not support {{chain}}"
+      },
+      "echologyPopup": {
+        "title": "Ecosystem"
       }
     },
     "nft": {
@@ -1193,6 +1402,12 @@
         "fillInTheBackupSeedPhraseInOrder": "Fill in the backup seed phrase in order",
         "wordPhrase": "I have a <1>{{count}}</1>-word phrase",
         "wordPhraseAndPassphrase": "I have a <1>{{count}}</1>-word phrase with Passphrase",
+        "slip39SeedPhrase": "I have a <0>{{SLIP39}}</0> Seed Phrase",
+        "slip39SeedPhraseWithPassphrase": "I have a <0>{{SLIP39}}</0> Seed Phrase with Passphrase",
+        "slip39SeedPhrasePlaceholder_one": "Enter your {{count}}st seed phrase shares here",
+        "slip39SeedPhrasePlaceholder_two": "Enter your {{count}}nd seed phrase shares here",
+        "slip39SeedPhrasePlaceholder_few": "Enter your {{count}}rd seed phrase shares here",
+        "slip39SeedPhrasePlaceholder_other": "Enter your {{count}}th seed phrase shares here",
         "clearAll": "Clear All",
         "pastedAndClear": "Pasted and clipboard cleared",
         "invalidContent": "Invalid content",
@@ -1218,6 +1433,10 @@
           "question": "What is a private key?",
           "answer": "A string of letters and numbers used to control your assets."
         },
+        "repeatImportTips": {
+          "desc": "This address has been imported.",
+          "question": "Do you want to switch to this address?"
+        },
         "isItSafeToImportItInRabby": {
           "question": "Is it safe to import it in Rabby?",
           "answer": "Yes, it will be stored locally on your browser and only accessible to you."
@@ -1238,7 +1457,13 @@
         "ledgerPermissionTip": "Please click \"Allow\" below and authorize access to your Ledger in the following pop-up window.",
         "permissionsAuthorized": "Permissions Authorized",
         "nowYouCanReInitiateYourTransaction": "Now you can re-initiate your transaction.",
-        "allow": "Allow"
+        "allow": "Allow",
+        "error": {
+          "ethereum_app_not_installed_error": "Please install the Ethereum app on your Ledger device.",
+          "ethereum_app_unconfirmed_error": "You have denied the request to open the Ethereum app.",
+          "ethereum_app_open_error": "Please install/accept Ethereum app on your Ledger device.",
+          "running_app_close_error": "Failed to close the running app on your Ledger device."
+        }
       },
       "keystone": {
         "title": "Connect Keystone",
@@ -1406,6 +1631,7 @@
         "manageImtokenOffline": "Manage imToken",
         "manageCoolwallet": "Manage CoolWallet",
         "manageBitbox02": "Manage BitBox02",
+        "manageNgraveZero": "Manage NGRAVE ZERO",
         "done": "Done",
         "addressesIn": "Addresses in {{0}}",
         "addressesInRabby": "Addresses in Rabby{{0}}",
@@ -1458,10 +1684,11 @@
       "title": "Add custom token to Rabby",
       "balance": "Balance",
       "tokenOnMultiChains": "Token address on multiple chains. Please choose one",
-      "noTokenFoundOnThisChain": "No token found on this chain"
+      "noTokenFoundOnThisChain": "No token found on this chain",
+      "hasAdded": "You have been added this token."
     },
     "switchChain": {
-      "title": "Switching to {{chain}}",
+      "title": "Add Custom Network to Rabby",
       "chainNotSupport": "The requested chain is not supported by Rabby yet",
       "testnetTip": "Please turn on \"Enable Testnets\" under \"More\" before connecting to testnets",
       "chainNotSupportYet": "The requested chain is not supported by Rabby yet",
@@ -1469,11 +1696,14 @@
       "unknownChain": "Unknown chain",
       "requestsReceived": "1 request received",
       "requestsReceivedPlural": "{{count}} requests received",
-      "requestRabbyToSupport": "Request Rabby to Support"
+      "requestRabbyToSupport": "Request Rabby to Support",
+      "chainNotSupportAddChain": "The requested chain is not Integrated by Rabby yet You can add it as a Custom Testnet",
+      "addChain": "Add Testnet",
+      "desc": "The requested network is not Integrated by Rabby yet You can add it as a custom network manually"
     },
     "signText": {
       "title": "Sign Text",
-      "message": "Message",
+      "message": "Text Message",
       "createKey": {
         "interactDapp": "Interact Dapp",
         "description": "Description"
@@ -1486,14 +1716,14 @@
       "currentValueIs": "Current value is {{value}}",
       "viewRules": "View security rules",
       "undo": "Undo",
-      "riskProcessed": "Risk Processed",
+      "riskProcessed": "Risk alert have been ignored",
       "ignoreAlert": "Ignore the alert",
       "ruleDisabled": "Security rules have been disabled. For your safety, you can turn it on anytime.",
-      "unknownResult": "Unknown result because security rule is unavailable",
+      "unknownResult": "Unknown result because security engine is unavailable right now",
       "alertTriggerReason": "Alert triggered reason:",
       "understandRisk": "I understand and accept responsibility for any loss",
       "forbiddenCantIgnore": "Found forbidden risk that can't be ignored.",
-      "ruleDetailTitle": "Rule Detail",
+      "ruleDetailTitle": "Risk Detail",
       "enableRule": "Enable the rule",
       "viewRiskLevel": "View risk level"
     },
@@ -1568,17 +1798,21 @@
     "customRpc": {
       "opened": "Opened",
       "closed": "Closed",
-      "empty": "No custom RPC",
-      "title": "Custom RPC",
-      "desc": "Enabling custom RPC will replace Rabby as the default node. To continue         using Rabby, please disable or remove the custom RPC node.",
-      "add": "Add RPC",
+      "empty": "No custom RPC URL",
+      "title": "Modify RPC URL",
+      "desc": "Once modified, the custom RPC will replace Rabby's node. To continue using Rabby's node, delete the custom RPC.",
+      "add": "Modify RPC URL",
       "EditRPCModal": {
         "invalidRPCUrl": "Invalid RPC URL",
         "invalidChainId": "Invalid Chain ID",
         "rpcAuthFailed": "RPC authentication failed",
-        "title": "Edit RPC",
+        "title": "Modify RPC URL",
         "rpcUrl": "RPC URL",
         "rpcUrlPlaceholder": "Enter the RPC URL"
+      },
+      "EditCustomTestnetModal": {
+        "title": "Add Custom Network",
+        "quickAdd": "Quick add from Chainlist"
       }
     },
     "requestDebankTestnetGasToken": {
@@ -1628,7 +1862,10 @@
       "title": "Backup Seed Phrase",
       "alert": "This Seed Phrase is the credential to your assets. DO NOT lose it or         reveal it to others, otherwise you might lose your assets forever.         Please view it in a secure environment and keep it carefully.",
       "clickToShow": "Click to show Seed Phrase",
-      "copySeedPhrase": "Copy seed phrase"
+      "copySeedPhrase": "Copy seed phrase",
+      "showQrCode": "Show QR Code",
+      "qrCodePopupTitle": "QR Code",
+      "qrCodePopupTips": "Never share the seed phrase QR code to anyone else. Please view it in a secure environment and keep it carefully."
     },
     "backupPrivateKey": {
       "title": "Backup Private Key",
@@ -1789,8 +2026,12 @@
         "rabbyUser": "Rabby Active User",
         "rabbyValuedUserBadge": "Rabby Valued User Badge",
         "rabbyDesktopGenesisNft": "Rabby Desktop Genesis NFT",
+        "walletBalance": "Wallet Balance",
+        "activeStats": "Active Status",
         "referral-code": "Referral Code",
-        "invalid-code": "invalid code"
+        "invalid-code": "invalid code",
+        "cantUseOwnCode": "You cannot use your own referral code.",
+        "season2": "Season 2"
       },
       "referralCode": {
         "referral-code-cannot-be-empty": "Referral code cannot be empty",
@@ -1811,7 +2052,125 @@
           "sign": "Sign"
         }
       },
-      "code-set-successfully": "Referral code set successfully"
+      "code-set-successfully": "Referral code set successfully",
+      "initialPointsClaimEnded": "Initial Points claim ended",
+      "firstRoundEnded": "🎉 The first round of Rabby Points has ended",
+      "secondRoundEnded": "🎉 The second round of Rabby Points has ended"
+    },
+    "customTestnet": {
+      "title": "Custom Network",
+      "desc": "Rabby cannot verify the security of custom networks. Please add trusted networks only.",
+      "add": "Add Custom Network",
+      "empty": "No Custom Network",
+      "currency": "Currency",
+      "id": "ID",
+      "CustomTestnetForm": {
+        "id": "Chain ID",
+        "name": "Network name",
+        "rpcUrl": "RPC URL",
+        "idRequired": "Please input chain id",
+        "nameRequired": "Please input network name",
+        "rpcUrlRequired": "Please input RPC URL",
+        "nativeTokenSymbol": "Currency symbol",
+        "nativeTokenSymbolRequired": "Please input currency symbol",
+        "blockExplorerUrl": "Block explorer URL (Optional)"
+      },
+      "AddFromChainList": {
+        "title": "Quick add from Chainlist",
+        "search": "Search custom network name or ID",
+        "empty": "No chains found",
+        "tips": {
+          "added": "You've already added this chain",
+          "supported": "Chain already integrated by Rabby Wallet"
+        }
+      },
+      "signTx": {
+        "title": "Transaction Data"
+      },
+      "ConfirmModifyRpcModal": {
+        "desc": "The chain is already integrated by Rabby. Do you need to modify its RPC URL?"
+      }
+    },
+    "addChain": {
+      "title": "Add Custom Network to Rabby",
+      "desc": "Rabby cannot verify the security of custom networks. Please add trusted networks only."
+    },
+    "sign": {
+      "transactionSpeed": "Transaction Speed"
+    },
+    "ecology": {
+      "dbk": {
+        "home": {
+          "bridge": "Bridge To DBK Chain",
+          "bridgePoweredBy": "Powered by OP Superchain",
+          "bridgeBtn": "Bridge",
+          "mintNFT": "Mint DBK Genesis NFT",
+          "mintNFTDesc": "Be a witness of DBK Chain",
+          "mintNFTBtn": "Mint"
+        },
+        "bridge": {
+          "tabs": {
+            "deposit": "Deposit",
+            "withdraw": "Withdraw"
+          },
+          "labelFrom": "From",
+          "labelTo": "To",
+          "info": {
+            "toAddress": "To address",
+            "receiveOn": "Receive on {{chainName}}",
+            "completeTime": "Completion time",
+            "gasFee": "Gas fee"
+          },
+          "error": {
+            "notEnoughBalance": "Insufficient balance"
+          },
+          "ActivityPopup": {
+            "empty": "No activities yet",
+            "deposit": "Deposit",
+            "withdraw": "Withdraw",
+            "status": {
+              "deposit": "Deposit",
+              "withdraw": "Withdraw",
+              "waitingToProve": "State root published",
+              "rootPublished": "State root published",
+              "readyToProve": "Ready to prove",
+              "proved": "Proved",
+              "challengePeriod": "Challenge period",
+              "readyToClaim": "Ready to claim",
+              "claimed": "Claimed"
+            },
+            "proveBtn": "Prove",
+            "claimBtn": "Claim",
+            "title": "Activities"
+          },
+          "WithdrawConfirmPopup": {
+            "question1": "I understand it will take ~7 days until my funds are claimable on Ethereum after I prove my withdrawal",
+            "question2": "I understand once a withdrawal is initiated it cannot be sped up or cancelled",
+            "question3": "I understand network fees are approximate and will change",
+            "title": "DBK Chain Withdrawal takes ~7 days",
+            "tips": "Withdrawing involves a 3-step process, requiring 1 DBK Chain transaction and 2 Ethereum transactions",
+            "step1": "Initiate withdrawal",
+            "step2": "Prove on Ethereum",
+            "step3": "Claim on Ethereum",
+            "btn": "Withdraw"
+          }
+        },
+        "minNFT": {
+          "title": "DBK Genesis",
+          "minted": "Minted",
+          "myBalance": " My Balance",
+          "mintBtn": "Mint"
+        }
+      }
+    },
+    "miniSignFooterBar": {
+      "signWithLedger": "Sign with Ledger",
+      "status": {
+        "txCreated": "Transaction created",
+        "txSigned": "Signed. Creating transaction",
+        "txSending": "Sending signing request",
+        "txSendings": "Sending signing request({{current}}/{{total}})"
+      }
     }
   },
   "component": {
@@ -1899,13 +2258,14 @@
     },
     "PillsSwitch": {
       "NetSwitchTabs": {
-        "mainnet": "Mainnets",
-        "testnet": "Testnets"
+        "mainnet": "Integrated Network",
+        "testnet": "Custom Network"
       }
     },
     "ChainSelectorModal": {
       "searchPlaceholder": "Search chain",
-      "noChains": "No chains"
+      "noChains": "No chains",
+      "addTestnet": "Add Custom Network"
     },
     "TokenSelector": {
       "listTableHead": {
@@ -1943,6 +2303,21 @@
     },
     "testnetCheckModal": {
       "title": "Please turn on \"Enable Testnets\" under \"More\" before sign on testnets"
+    },
+    "EcologyNavBar": {
+      "providedBy": "Provided by {{chainName}}"
+    },
+    "EcologyNoticeModal": {
+      "title": "Notice",
+      "desc": "The following services will be provided directly by third party Ecosystem Partner. Rabby Wallet does not assume responsibility for the security of these services.",
+      "notRemind": "Don't remind me again"
+    },
+    "ReserveGasPopup": {
+      "title": "Reserve Gas",
+      "instant": "Instant",
+      "fast": "Fast",
+      "normal": "Normal",
+      "doNotReserve": "Don't reserve Gas"
     }
   },
   "global": {
@@ -1978,7 +2353,8 @@
     "Balance": "Balance",
     "Done": "Done",
     "Nonce": "Nonce",
-    "tryAgain": "Try Again"
+    "tryAgain": "Try Again",
+    "notSupportTesntnet": "Not supported for custom network"
   },
   "background": {
     "error": {
@@ -1992,7 +2368,7 @@
       "addKeyring404": "failed to addKeyring, keyring is undefined",
       "emptyAccount": "the current account is empty",
       "generateCacheAliasNames": "[GenerateCacheAliasNames]: need at least one address",
-      "invalidPrivateKey": "the private key is invalid",
+      "invalidPrivateKey": "The private key is invalid",
       "invalidJson": "the input file is invalid",
       "invalidMnemonic": "The seed phrase is invalid, please check!",
       "notFoundKeyringByAddress": "Can't find keyring by address",

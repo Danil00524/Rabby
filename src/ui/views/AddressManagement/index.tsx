@@ -488,7 +488,7 @@ const AddressManagement = () => {
         {enableSwitch
           ? t('page.manageAddress.current-address')
           : t('page.manageAddress.address-management')}
-        <div className="absolute top-24 right-[42px]">
+        <div className="absolute top-24 right-[36px]">
           <RcIconAddAddress
             viewBox="0 0 20 20"
             className={clsx(
@@ -556,6 +556,7 @@ const AddressManagement = () => {
                   address={accountList[currentAccountIndex].address || ''}
                   brandName={accountList[currentAccountIndex].brandName || ''}
                   className="m-[16px] mt-0 text-white bg-[#0000001A]"
+                  type={accountList[currentAccountIndex].type}
                 />
               )}
               {isLedger && (
@@ -572,6 +573,7 @@ const AddressManagement = () => {
                   address={accountList[currentAccountIndex].address || ''}
                   brandName={KEYRING_CLASS.Coinbase}
                   className="m-[16px] mt-0 text-white bg-[#0000001A]"
+                  type={KEYRING_CLASS.Coinbase}
                 />
               )}
             </AddressItem>
@@ -584,11 +586,11 @@ const AddressManagement = () => {
           onChange={(e) => setSearchKeyword(e.target.value)}
         />
         <div
-          className="flex items-center cursor-pointer"
+          className="flex items-center cursor-pointer "
           onClick={gotoManageAddress}
         >
           <span>{t('page.manageAddress.manage-address')}</span>
-          <RcIconRight />
+          <RcIconRight className="relative top-1" />
         </div>
       </div>
       {noAnyAccount ? (

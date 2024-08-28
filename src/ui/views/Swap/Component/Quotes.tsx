@@ -1,45 +1,18 @@
 import { Checkbox, Popup } from '@/ui/component';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { QuoteListLoading, QuoteLoading } from './loading';
-import styled from 'styled-components';
 import { IconRefresh } from './IconRefresh';
-import { CexQuoteItem, DexQuoteItem, QuoteItemProps } from './QuoteItem';
-import {
-  TCexQuoteData,
-  TDexQuoteData,
-  isSwapWrapToken,
-  useSetRefreshId,
-  useSetSettingVisible,
-  useSwapSettings,
-} from '../hooks';
+import { DexQuoteItem, QuoteItemProps } from './QuoteItem';
+import { TDexQuoteData, isSwapWrapToken, useSetRefreshId } from '../hooks';
 import BigNumber from 'bignumber.js';
-import { CEX, DEX, DEX_WITH_WRAP } from '@/constant';
+import { DEX_WITH_WRAP } from '@/constant';
 import { SvgIconCross } from 'ui/assets';
 import { useTranslation } from 'react-i18next';
 import { getTokenSymbol } from '@/ui/utils/token';
-
-const CexListWrapper = styled.div`
-  border: 1px solid var(--r-neutral-line, #d3d8e0);
-  border-radius: 6px;
-  &:empty {
-    display: none;
-  }
-
-  & > div:not(:last-child) {
-    position: relative;
-    &:not(:last-child):before {
-      content: '';
-      position: absolute;
-      width: 328px;
-      height: 0;
-      border-bottom: 1px solid var(--r-neutral-line, #d3d8e0);
-      left: 16px;
-      bottom: 0;
-    }
-  }
-`;
-
-const exchangeCount = Object.keys(DEX).length + Object.keys(CEX).length;
+import { ReactComponent as RcIconHiddenArrow } from '@/ui/assets/swap/hidden-quote-arrow.svg';
+import clsx from 'clsx';
+import { useRabbySelector } from '@/ui/store';
+import { isSameAddress } from '@/ui/utils';
 
 interface QuotesProps
   extends Omit<
@@ -52,7 +25,7 @@ interface QuotesProps
     | 'isBestQuote'
     | 'quoteProviderInfo'
   > {
-  list?: (TCexQuoteData | TDexQuoteData)[];
+  list?: TDexQuoteData[];
   activeName?: string;
   visible: boolean;
   onClose: () => void;
@@ -62,110 +35,74 @@ export const Quotes = ({
   list,
   activeName,
   inSufficient,
+  sortIncludeGasFee,
   ...other
 }: QuotesProps) => {
   const { t } = useTranslation();
-  const { swapViewList, swapTradeList, sortIncludeGasFee } = useSwapSettings();
 
-  const viewCount = useMemo(() => {
-    if (swapViewList) {
-      return (
-        exchangeCount -
-        Object.values(swapViewList).filter((e) => e === false).length
-      );
-    }
-    return exchangeCount;
-  }, [swapViewList]);
-
-  const tradeCount = useMemo(() => {
-    if (swapTradeList) {
-      return Object.values(swapTradeList).filter((e) => e === true).length;
-    }
-    return 0;
-  }, [swapTradeList]);
-
-  const setSettings = useSetSettingVisible();
-  const openSettings = React.useCallback(() => {
-    setSettings(true);
-  }, []);
   const sortedList = useMemo(
     () => [
       ...(list?.sort((a, b) => {
         const getNumber = (quote: typeof a) => {
-          if (quote.isDex) {
-            if (inSufficient) {
-              return new BigNumber(quote.data?.toTokenAmount || 0)
-                .div(
-                  10 **
-                    (quote.data?.toTokenDecimals || other.receiveToken.decimals)
-                )
-                .times(other.receiveToken.price);
-            }
-            if (!quote.preExecResult) {
-              return new BigNumber(0);
-            }
-
-            if (sortIncludeGasFee) {
-              return new BigNumber(
-                quote?.preExecResult.swapPreExecTx.balance_change
-                  .receive_token_list?.[0]?.amount || 0
+          const price = other.receiveToken.price ? other.receiveToken.price : 0;
+          if (inSufficient) {
+            return new BigNumber(quote.data?.toTokenAmount || 0)
+              .div(
+                10 **
+                  (quote.data?.toTokenDecimals || other.receiveToken.decimals)
               )
-                .times(other.receiveToken.price)
-                .minus(quote?.preExecResult?.gasUsdValue || 0);
-            }
-
-            return new BigNumber(
-              quote?.preExecResult.swapPreExecTx.balance_change
-                .receive_token_list?.[0]?.amount || 0
-            ).times(other.receiveToken.price);
+              .times(price);
+          }
+          if (!quote.preExecResult) {
+            return new BigNumber(Number.MIN_SAFE_INTEGER);
+          }
+          const receiveTokenAmount =
+            quote?.preExecResult.swapPreExecTx.balance_change.receive_token_list.find(
+              (item) => isSameAddress(item.id, other.receiveToken.id)
+            )?.amount || 0;
+          if (sortIncludeGasFee) {
+            return new BigNumber(receiveTokenAmount)
+              .times(price)
+              .minus(quote?.preExecResult?.gasUsdValue || 0);
           }
 
-          return new BigNumber(
-            quote?.data?.receive_token
-              ? quote?.data?.receive_token?.amount
-              : -Number.MAX_SAFE_INTEGER
-          ).times(other.receiveToken.price);
+          return new BigNumber(receiveTokenAmount).times(price);
         };
         return getNumber(b).minus(getNumber(a)).toNumber();
       }) || []),
     ],
-    [
-      inSufficient,
-      list,
-      other.receiveToken.decimals,
-      other?.receiveToken?.price,
-      sortIncludeGasFee,
-    ]
+    [inSufficient, list, other.receiveToken, sortIncludeGasFee]
   );
 
   const [bestQuoteAmount, bestQuoteGasUsd] = useMemo(() => {
     const bestQuote = sortedList?.[0];
+    const receiveTokenAmount = bestQuote?.preExecResult
+      ? bestQuote.preExecResult.swapPreExecTx.balance_change.receive_token_list.find(
+          (item) => isSameAddress(item.id, other.receiveToken.id)
+        )?.amount || 0
+      : 0;
 
     return [
-      (bestQuote?.isDex
-        ? inSufficient
-          ? new BigNumber(bestQuote.data?.toTokenAmount || 0)
-              .div(
-                10 **
-                  (bestQuote?.data?.toTokenDecimals ||
-                    other.receiveToken.decimals ||
-                    1)
-              )
-              .toString(10)
-          : bestQuote?.preExecResult?.swapPreExecTx.balance_change
-              .receive_token_list[0]?.amount
-        : new BigNumber(bestQuote?.data?.receive_token.amount || '0').toString(
-            10
-          )) || '0',
+      inSufficient
+        ? new BigNumber(bestQuote.data?.toTokenAmount || 0)
+            .div(
+              10 **
+                (bestQuote?.data?.toTokenDecimals ||
+                  other.receiveToken.decimals ||
+                  1)
+            )
+            .toString(10)
+        : receiveTokenAmount,
       bestQuote?.isDex ? bestQuote.preExecResult?.gasUsdValue || '0' : '0',
     ];
-  }, [inSufficient, other?.receiveToken?.decimals, sortedList]);
+  }, [inSufficient, other?.receiveToken, sortedList]);
 
   const fetchedList = useMemo(() => list?.map((e) => e.name) || [], [list]);
+  const [hiddenError, setHiddenError] = useState(true);
+  const [errorQuoteDEXs, setErrorQuoteDEXs] = useState<string[]>([]);
 
-  const noCex = useMemo(() => {
-    return Object.keys(CEX).every((e) => swapViewList?.[e] === false);
-  }, [swapViewList]);
+  const dexListLength = useRabbySelector((s) => s.swap.supportedDEXList.length);
+
   if (isSwapWrapToken(other.payToken.id, other.receiveToken.id, other.chain)) {
     const dex = sortedList.find((e) => e.isDex) as TDexQuoteData | undefined;
 
@@ -179,16 +116,17 @@ export const Quotes = ({
             name={dex?.name}
             isBestQuote
             bestQuoteAmount={`${
-              dex?.preExecResult?.swapPreExecTx.balance_change
-                .receive_token_list[0]?.amount || '0'
+              dex?.preExecResult?.swapPreExecTx.balance_change.receive_token_list.find(
+                (token) => isSameAddress(token.id, other.receiveToken.id)
+              )?.amount || '0'
             }`}
             bestQuoteGasUsd={bestQuoteGasUsd}
-            active={activeName === dex?.name}
             isLoading={dex.loading}
             quoteProviderInfo={{
               name: t('page.swap.wrap-contract'),
               logo: other?.receiveToken?.logo_url,
             }}
+            sortIncludeGasFee={sortIncludeGasFee}
             {...other}
           />
         ) : (
@@ -207,13 +145,14 @@ export const Quotes = ({
     );
   }
   return (
-    <div className="flex flex-col h-full w-full">
-      <div className="flex flex-col gap-8">
+    <div className="flex flex-col flex-1 w-full overflow-auto">
+      <div className="flex flex-col gap-12">
         {sortedList.map((params, idx) => {
           const { name, data, isDex } = params;
           if (!isDex) return null;
           return (
             <DexQuoteItem
+              onErrQuote={setErrorQuoteDEXs}
               key={name}
               inSufficient={inSufficient}
               preExecResult={params.preExecResult}
@@ -222,50 +161,72 @@ export const Quotes = ({
               isBestQuote={idx === 0}
               bestQuoteAmount={`${bestQuoteAmount}`}
               bestQuoteGasUsd={bestQuoteGasUsd}
-              active={activeName === name}
               isLoading={params.loading}
               quoteProviderInfo={
                 DEX_WITH_WRAP[name as keyof typeof DEX_WITH_WRAP]
               }
+              sortIncludeGasFee={sortIncludeGasFee}
               {...other}
             />
           );
         })}
+
         <QuoteListLoading fetchedList={fetchedList} />
       </div>
-      {!noCex && (
-        <div className="text-gray-light text-12 mt-20 mb-8">
-          {t('page.swap.rates-from-cex')}
-        </div>
-      )}
-      <CexListWrapper>
+      <div
+        className={clsx(
+          'flex items-center justify-center my-8 mt-24 cursor-pointer gap-4',
+          errorQuoteDEXs.length === 0 ||
+            errorQuoteDEXs?.length === dexListLength
+            ? 'hidden'
+            : 'mb-12'
+        )}
+        onClick={() => setHiddenError((e) => !e)}
+      >
+        <span className="text-13 text-rabby-neutral-foot gap-4 ">
+          {t('page.swap.hidden-no-quote-rates', {
+            count: errorQuoteDEXs.length,
+          })}
+        </span>
+        <RcIconHiddenArrow
+          viewBox="0 0 14 14"
+          className={clsx('w-14 h-14', !hiddenError && '-rotate-180')}
+        />
+      </div>
+      <div
+        className={clsx(
+          'flex flex-col gap-8 transition overflow-hidden',
+          hiddenError &&
+            errorQuoteDEXs?.length !== dexListLength &&
+            'max-h-0 h-0',
+          errorQuoteDEXs.length === 0 && 'hidden'
+        )}
+      >
         {sortedList.map((params, idx) => {
           const { name, data, isDex } = params;
-          if (isDex) return null;
+
+          if (!isDex) return null;
           return (
-            <CexQuoteItem
+            <DexQuoteItem
+              onErrQuote={setErrorQuoteDEXs}
+              onlyShowErrorQuote
               key={name}
+              inSufficient={inSufficient}
+              preExecResult={params.preExecResult}
+              quote={(data as unknown) as any}
               name={name}
-              data={(data as unknown) as any}
+              isBestQuote={idx === 0}
               bestQuoteAmount={`${bestQuoteAmount}`}
               bestQuoteGasUsd={bestQuoteGasUsd}
-              isBestQuote={idx === 0}
               isLoading={params.loading}
-              inSufficient={inSufficient}
+              quoteProviderInfo={
+                DEX_WITH_WRAP[name as keyof typeof DEX_WITH_WRAP]
+              }
+              sortIncludeGasFee={sortIncludeGasFee}
+              {...other}
             />
           );
         })}
-        <QuoteListLoading fetchedList={fetchedList} isCex />
-      </CexListWrapper>
-      <div className="pt-[40px]" />
-      <div className="flex items-center justify-center fixed left-0 bottom-0 h-32 text-13 w-full bg-r-neutral-bg-2 text-r-neutral-foot">
-        {t('page.swap.tradingSettingTips', { viewCount, tradeCount })}
-        <span
-          onClick={openSettings}
-          className="cursor-pointer pl-4 text-blue-light underline underline-blue-light"
-        >
-          {t('page.swap.edit')}
-        </span>
       </div>
     </div>
   );
@@ -276,7 +237,7 @@ const bodyStyle = {
   paddingBottom: 0,
 };
 
-export const QuoteList = (props: QuotesProps) => {
+export const QuoteList = (props: Omit<QuotesProps, 'sortIncludeGasFee'>) => {
   const { visible, onClose } = props;
   const refresh = useSetRefreshId();
 
@@ -286,7 +247,30 @@ export const QuoteList = (props: QuotesProps) => {
 
   const { t } = useTranslation();
 
-  const { sortIncludeGasFee, setSwapSortIncludeGasFee } = useSwapSettings();
+  const [sortIncludeGasFee, setSortIncludeGasFee] = useState(true);
+
+  const dexList = useRabbySelector((s) => s.swap.supportedDEXList);
+
+  const height = useMemo(() => {
+    const min = 333;
+    const max = 540;
+
+    const h = 45 + 24 + dexList.length * 100;
+
+    if (h < min) {
+      return min;
+    }
+    if (h > max) {
+      return max;
+    }
+    return h;
+  }, [dexList.length]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSortIncludeGasFee(true);
+    }
+  }, [visible]);
 
   return (
     <Popup
@@ -310,7 +294,7 @@ export const QuoteList = (props: QuotesProps) => {
 
           <Checkbox
             checked={!!sortIncludeGasFee}
-            onChange={setSwapSortIncludeGasFee}
+            onChange={setSortIncludeGasFee}
             className="text-12 text-rabby-neutral-body"
             width="14px"
             height="14px"
@@ -356,7 +340,7 @@ export const QuoteList = (props: QuotesProps) => {
           </Checkbox>
         </div>
       }
-      height={544}
+      height={height}
       onClose={onClose}
       closable={false}
       destroyOnClose
@@ -364,7 +348,7 @@ export const QuoteList = (props: QuotesProps) => {
       bodyStyle={bodyStyle}
       isSupportDarkMode
     >
-      <Quotes {...props} />
+      <Quotes {...props} sortIncludeGasFee={sortIncludeGasFee} />
     </Popup>
   );
 };

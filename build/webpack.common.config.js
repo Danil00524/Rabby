@@ -1,3 +1,6 @@
+const child_process = require('child_process');
+const path = require('path');
+
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const TSConfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
@@ -5,7 +8,6 @@ const ESLintWebpackPlugin = require('eslint-webpack-plugin');
 const tsImportPluginFactory = require('ts-import-plugin');
 const AssetReplacePlugin = require('./plugins/AssetReplacePlugin');
 const CopyPlugin = require('copy-webpack-plugin');
-const path = require('path');
 
 const createStyledComponentsTransformer = require('typescript-plugin-styled-components')
   .default;
@@ -13,6 +15,11 @@ const createStyledComponentsTransformer = require('typescript-plugin-styled-comp
 const isEnvDevelopment = process.env.NODE_ENV !== 'production';
 
 const paths = require('./paths');
+
+const BUILD_GIT_HASH = child_process
+  .execSync('git log --format="%h" -n 1')
+  .toString()
+  .trim();
 
 const config = {
   entry: {
@@ -221,6 +228,7 @@ const config = {
     new webpack.DefinePlugin({
       'process.env.version': JSON.stringify(`version: ${process.env.VERSION}`),
       'process.env.release': JSON.stringify(process.env.VERSION),
+      'process.env.RABBY_BUILD_GIT_HASH': JSON.stringify(BUILD_GIT_HASH),
     }),
     new CopyPlugin({
       patterns: [
@@ -231,18 +239,40 @@ const config = {
             : paths.rootResolve('src/manifest/mv2/manifest.json'),
           to: paths.dist,
         },
-        {
-          from: require.resolve(
-            '@trezor/connect-web/lib/webextension/trezor-usb-permissions.js'
-          ),
-          to: paths.rootResolve('dist/vendor/trezor/trezor-usb-permissions.js'),
-        },
-        {
-          from: require.resolve(
-            '@trezor/connect-web/lib/webextension/trezor-content-script.js'
-          ),
-          to: paths.rootResolve('dist/vendor/trezor/trezor-content-script.js'),
-        },
+        process.env.ENABLE_MV3
+          ? {
+              from: require.resolve(
+                '@trezor/connect-webextension/build/content-script.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-content-script.js'
+              ),
+            }
+          : {
+              from: require.resolve(
+                '@trezor/connect-web/lib/webextension/trezor-content-script.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-content-script.js'
+              ),
+            },
+        process.env.ENABLE_MV3
+          ? {
+              from: require.resolve(
+                '@trezor/connect-webextension/build/trezor-connect-webextension.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-connect-webextension.js'
+              ),
+            }
+          : {
+              from: require.resolve(
+                '@trezor/connect-web/lib/webextension/trezor-usb-permissions.js'
+              ),
+              to: paths.rootResolve(
+                'dist/vendor/trezor/trezor-usb-permissions.js'
+              ),
+            },
       ],
     }),
   ],

@@ -7,6 +7,7 @@ import {
   WALLETCONNECT_STATUS_MAP,
   EVENTS,
   KEYRING_CATEGORY_MAP,
+  CHAINS_ENUM,
 } from 'consts';
 import { useApproval, useCommonPopupView, useWallet } from 'ui/utils';
 import eventBus from '@/eventBus';
@@ -14,7 +15,8 @@ import Process from './Process';
 import { message } from 'antd';
 import { useSessionStatus } from '@/ui/component/WalletConnect/useSessionStatus';
 import { adjustV } from '@/ui/utils/gnosis';
-import { findChainByEnum } from '@/utils/chain';
+import { findChain, findChainByEnum } from '@/utils/chain';
+import { emitSignComponentAmounted } from '@/utils/signEvent';
 
 interface ApprovalParams {
   address: string;
@@ -39,9 +41,10 @@ const CoinbaseWaiting = ({ params }: { params: ApprovalParams }) => {
   }>(null);
   const [result, setResult] = useState('');
   const [getApproval, resolveApproval, rejectApproval] = useApproval();
-  const chain = Object.values(CHAINS).find(
-    (item) => item.id === (params.chainId || 1)
-  )!.enum;
+
+  const chain = findChain({
+    id: params.chainId || 1,
+  })?.enum;
   const isSignTextRef = useRef(false);
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
   const explainRef = useRef<any | null>(null);
@@ -81,6 +84,7 @@ const CoinbaseWaiting = ({ params }: { params: ApprovalParams }) => {
     setConnectError(null);
     await wallet.resendSign();
     message.success(t('page.signFooterBar.walletConnect.requestSuccessToast'));
+    emitSignComponentAmounted();
   };
 
   const init = async () => {
@@ -134,24 +138,28 @@ const CoinbaseWaiting = ({ params }: { params: ApprovalParams }) => {
 
     if (!isText && !isSignTriggered) {
       const explain = explainRef.current;
+      const chainInfo = findChainByEnum(chain);
 
-      if (explain) {
+      if (explain || chainInfo?.isTestnet) {
         wallet.reportStats('signTransaction', {
           type: account.brandName,
-          chainId: findChainByEnum(chain)?.serverId || '',
+          chainId: chainInfo?.serverId || '',
           category: KEYRING_CATEGORY_MAP[account.type],
           preExecSuccess: explain
             ? explain?.calcSuccess && explain?.pre_exec.success
             : true,
-          createBy: params?.$ctx?.ga ? 'rabby' : 'dapp',
+          createdBy: params?.$ctx?.ga ? 'rabby' : 'dapp',
           source: params?.$ctx?.ga?.source || '',
           trigger: params?.$ctx?.ga?.trigger || '',
+          networkType: chainInfo?.isTestnet
+            ? 'Custom Network'
+            : 'Integrated Network',
         });
       }
       matomoRequestEvent({
         category: 'Transaction',
         action: 'Submit',
-        label: account.brandName,
+        label: chainInfo?.isTestnet ? 'Custom Network' : 'Integrated Network',
       });
       isSignTriggered = true;
     }
@@ -163,6 +171,8 @@ const CoinbaseWaiting = ({ params }: { params: ApprovalParams }) => {
       });
       isSignTriggered = true;
     }
+
+    emitSignComponentAmounted();
   };
 
   useEffect(() => {
@@ -194,7 +204,7 @@ const CoinbaseWaiting = ({ params }: { params: ApprovalParams }) => {
       <div className="watchaddress-operation">
         {currentAccount && (
           <Process
-            chain={chain}
+            chain={chain || CHAINS_ENUM.ETH}
             result={result}
             status={connectStatus}
             error={connectError}

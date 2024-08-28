@@ -15,7 +15,11 @@ const importAllScripts = () => {
   }
 
   try {
-    importScripts('/webextension-polyfill.js', '/background.js');
+    importScripts(
+      '/webextension-polyfill.js',
+      '/vendor/trezor/trezor-connect-webextension.js',
+      '/background.js'
+    );
     scriptsLoadInitiated = true;
   } catch (e) {
     console.error(e);
@@ -74,6 +78,18 @@ const registerInPageContentScript = async () => {
 };
 
 clearAlarms();
-importAllScripts();
 createOffscreen();
 keepAlive();
+
+// ref https://stackoverflow.com/questions/66406672/how-do-i-import-scripts-into-a-service-worker-using-chrome-extension-manifest-ve
+self.addEventListener('install', () => {
+  console.log('installing service worker');
+  importAllScripts();
+});
+
+// In MV3, Event handler must be added on the initial evaluation of worker script.
+if (navigator?.usb) {
+  navigator.usb.addEventListener('disconnect', (device) => {
+    console.log('USB device disconnected', device);
+  });
+}

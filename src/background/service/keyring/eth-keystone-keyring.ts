@@ -47,13 +47,12 @@ export default class KeystoneKeyring extends MetaMaskKeyring {
   constructor() {
     super();
 
-    this.getMemStore().subscribe((data) => {
-      const request = data.sign?.request;
-      this.getInteraction().on(AcquireMemeStoreData, () => {
-        if (request) {
-          this.getInteraction().emit(MemStoreDataReady, request);
-        }
-      });
+    this.getInteraction().on(AcquireMemeStoreData, () => {
+      const request = this.getMemStore().getState().sign?.request;
+
+      if (request) {
+        this.getInteraction().emit(MemStoreDataReady, request);
+      }
     });
   }
 
@@ -217,6 +216,8 @@ export default class KeystoneKeyring extends MetaMaskKeyring {
   }
 
   removeAccount = (address: string) => {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
     super.removeAccount(address);
     delete this.brandsMap[address.toLowerCase()];
   };

@@ -4,6 +4,7 @@ import Player from './Player';
 import Reader from './Reader';
 import {
   CHAINS,
+  CHAINS_ENUM,
   EVENTS,
   HARDWARE_KEYRING_TYPES,
   KEYRING_CATEGORY_MAP,
@@ -16,7 +17,7 @@ import { useHistory } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ApprovalPopupContainer } from '../Popup/ApprovalPopupContainer';
 import { adjustV } from '@/ui/utils/gnosis';
-import { findChainByEnum } from '@/utils/chain';
+import { findChain, findChainByEnum } from '@/utils/chain';
 import {
   UnderlineButton as SwitchButton,
   SIGNATURE_METHOD,
@@ -24,6 +25,7 @@ import {
   KeystoneWiredWaiting,
 } from './KeystoneWaiting';
 import clsx from 'clsx';
+import { emitSignComponentAmounted } from '@/utils/signEvent';
 
 const KEYSTONE_TYPE = HARDWARE_KEYRING_TYPES.Keystone.type;
 enum QRHARDWARE_STATUS {
@@ -69,9 +71,10 @@ const QRHardWareWaiting = ({ params }) => {
     approvalId: string;
   }>();
 
-  const chain = Object.values(CHAINS).find(
-    (item) => item.id === (params.chainId || 1)
-  )!.enum;
+  const chain =
+    findChain({
+      id: params.chainId || 1,
+    })?.enum || CHAINS_ENUM.ETH;
   const init = useCallback(async () => {
     const approval = await getApproval();
     const account = await wallet.syncGetCurrentAccount()!;
@@ -93,18 +96,18 @@ const QRHardWareWaiting = ({ params }) => {
       params.isGnosis ? true : approval?.data.approvalType !== 'SignTx'
     );
 
-    let currentSignId = null;
-    if (account.brandName === WALLET_BRAND_TYPES.KEYSTONE) {
-      currentSignId = await wallet.requestKeyring(
-        KEYSTONE_TYPE,
-        'exportCurrentSignRequestIdIfExist',
-        null
-      );
-    }
-
     eventBus.addEventListener(
       EVENTS.QRHARDWARE.ACQUIRE_MEMSTORE_SUCCEED,
-      ({ request }) => {
+      async ({ request }) => {
+        let currentSignId = null;
+        if (account.brandName === WALLET_BRAND_TYPES.KEYSTONE) {
+          currentSignId = await wallet.requestKeyring(
+            KEYSTONE_TYPE,
+            'exportCurrentSignRequestIdIfExist',
+            null
+          );
+        }
+
         if (currentSignId) {
           if (currentSignId === request.requestId) {
             setSignPayload(request);
@@ -145,7 +148,9 @@ const QRHardWareWaiting = ({ params }) => {
         // rejectApproval(data.errorMsg);
       }
     });
-    await wallet.acquireKeystoneMemStoreData();
+
+    emitSignComponentAmounted();
+    wallet.acquireKeystoneMemStoreData();
   }, []);
 
   React.useEffect(() => {
@@ -188,25 +193,31 @@ const QRHardWareWaiting = ({ params }) => {
           //   chainId: Number(chainId),
           // });
           const signingTx = await wallet.getSigningTx(signingTxId);
+          const chainInfo = findChain({
+            enum: chain,
+          });
 
-          if (!signingTx?.explain) {
+          if (!signingTx?.explain && chainInfo && !chainInfo.isTestnet) {
             setErrorMessage(t('page.signFooterBar.qrcode.failedToGetExplain'));
             return;
           }
 
-          const explain = signingTx.explain;
+          const explain = signingTx?.explain;
 
-          stats.report('signTransaction', {
+          wallet.reportStats('signTransaction', {
             type: account.brandName,
-            chainId: findChainByEnum(chain)?.serverId || '',
+            chainId: chainInfo?.serverId || '',
             category: KEYRING_CATEGORY_MAP[account.type],
             preExecSuccess: explain
               ? explain?.calcSuccess && explain?.pre_exec.success
               : true,
-            createBy: params?.$ctx?.ga ? 'rabby' : 'dapp',
+            createdBy: params?.$ctx?.ga ? 'rabby' : 'dapp',
             source: params?.$ctx?.ga?.source || '',
             trigger: params?.$ctx?.ga?.trigger || '',
             signMethod,
+            networkType: chainInfo?.isTestnet
+              ? 'Custom Network'
+              : 'Integrated Network',
           });
         }
       } else {

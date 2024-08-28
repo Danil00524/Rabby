@@ -12,11 +12,13 @@ import {
   IS_VIVALDI,
   IS_CHROME,
   KEYRING_CATEGORY,
+  IS_WINDOWS,
 } from 'consts';
 import transactionHistoryService from './transactionHistory';
 import preferenceService from './preference';
 import stats from '@/stats';
 import BigNumber from 'bignumber.js';
+import { findChain } from '@/utils/chain';
 import { isManifestV3 } from '@/utils/env';
 
 type IApprovalComponents = typeof import('@/ui/views/Approval/components');
@@ -60,11 +62,12 @@ export type StatsData = {
   chainId: string;
   category: KEYRING_CATEGORY;
   preExecSuccess: boolean;
-  createBy: string;
+  createdBy: string;
   source: any;
   trigger: any;
   reported: boolean;
   signMethod?: string;
+  networkType?: string;
 };
 
 // something need user approval in window
@@ -120,8 +123,12 @@ class NotificationService extends Events {
 
     winMgr.event.on('windowFocusChange', (winId: number) => {
       if (IS_VIVALDI) return;
-      if (IS_CHROME && winId === chrome.windows.WINDOW_ID_NONE && IS_LINUX) {
-        // When sign on Linux, will focus on -1 first then focus on sign window
+      if (
+        IS_CHROME &&
+        winId === chrome.windows.WINDOW_ID_NONE &&
+        (IS_LINUX || IS_WINDOWS)
+      ) {
+        // When sign on Linux or Windows, will focus on -1 first then focus on sign window
         return;
       }
 
@@ -252,15 +259,24 @@ class NotificationService extends Events {
         : null;
       const explain = signingTx?.explain;
 
-      if (explain && currentAccount) {
+      const chain = findChain({
+        id: signingTx?.rawTx.chainId,
+      });
+
+      if ((explain || chain?.isTestnet) && currentAccount) {
         stats.report('preExecTransaction', {
           type: currentAccount.brandName,
           category: KEYRING_CATEGORY_MAP[currentAccount.type],
-          chainId: explain.native_token.chain,
-          success: explain.calcSuccess && explain.pre_exec.success,
-          createBy: data?.params.$ctx?.ga ? 'rabby' : 'dapp',
+          chainId: chain?.serverId || '',
+          success: explain
+            ? explain.calcSuccess && explain.pre_exec.success
+            : true,
+          createdBy: data?.params.$ctx?.ga ? 'rabby' : 'dapp',
           source: data?.params.$ctx?.ga?.source || '',
           trigger: data?.params.$ctx?.ga.trigger || '',
+          networkType: chain?.isTestnet
+            ? 'Custom Network'
+            : 'Integrated Network',
         });
       }
     };
@@ -325,23 +341,11 @@ class NotificationService extends Events {
           this.currentApproval = approval;
         }
       }
+
       if (
-        ['wallet_switchEthereumChain', 'wallet_addEthereumChain'].includes(
-          data?.params?.method
-        )
+        this.notifiWindowId !== null &&
+        QUEUE_APPROVAL_COMPONENTS_WHITELIST.includes(data.approvalComponent)
       ) {
-        const chainId = data.params?.data?.[0]?.chainId;
-        const chain = Object.values(CHAINS).find((chain) =>
-          new BigNumber(chain.hex).isEqualTo(chainId)
-        );
-
-        if (chain) {
-          this.resolveApproval(null);
-          return;
-        }
-      }
-
-      if (this.notifiWindowId !== null) {
         browser.windows.update(this.notifiWindowId, {
           focused: true,
         });

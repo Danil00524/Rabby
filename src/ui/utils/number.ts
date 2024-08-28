@@ -19,15 +19,23 @@ export const splitNumberByStep = (
   return n.toFormat(fmt);
 };
 
-export const formatTokenAmount = (amount: number | string, decimals = 4) => {
+export const formatTokenAmount = (
+  amount: number | string,
+  decimals = 4,
+  moreDecimalsWhenNotEnough = false // when number less then 0.0001, auto change decimals to 8
+) => {
   if (!amount) return '0';
   const bn = new BigNumber(amount);
   const str = bn.toFixed();
   const split = str.split('.');
-  if (!split[1] || split[1].length < decimals) {
+  let realDecimals = decimals;
+  if (moreDecimalsWhenNotEnough && bn.lt(0.0001) && decimals < 8) {
+    realDecimals = 8;
+  }
+  if (!split[1] || split[1].length < realDecimals) {
     return splitNumberByStep(bn.toFixed());
   }
-  return splitNumberByStep(bn.toFixed(decimals));
+  return splitNumberByStep(bn.toFixed(realDecimals));
 };
 
 export const numberWithCommasIsLtOne = (
@@ -39,9 +47,13 @@ export const numberWithCommasIsLtOne = (
   }
   if (x.toString() === '0') return '0';
 
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (x < 0.00005) {
     return '< 0.0001';
   }
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   precision = x < 1 ? 4 : precision ?? 2;
   const parts: string[] = Number(x).toFixed(precision).split('.');
 
@@ -77,9 +89,13 @@ export const formatNumber = (
 };
 
 export const formatPrice = (price: string | number) => {
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (price >= 1) {
     return formatNumber(price);
   }
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (price < 0.00001) {
     if (price.toString().length > 10) {
       return Number(price).toExponential(4);
@@ -106,11 +122,19 @@ export const formatUsdValue = (value: string | number) => {
 };
 
 export const formatAmount = (amount: string | number, decimals = 4) => {
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (amount > 1e9) {
     return `${new BigNumber(amount).div(1e9).toFormat(4)}B`;
   }
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (amount > 10000) return formatNumber(amount);
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (amount > 1) return formatNumber(amount, 4);
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error
   if (amount < 0.00001) {
     if (amount.toString().length > 10) {
       return Number(amount).toExponential(4);
@@ -151,3 +175,22 @@ export function coerceFloat(input: any, fallbackNum = 0) {
 
   return output;
 }
+
+export function isMeaningfulNumber(input: any): input is number {
+  return typeof input === 'number' && !Number.isNaN(input);
+}
+
+export const formatGasCostUsd = (gasCostUsd: BigNumber) => {
+  const bn = gasCostUsd!;
+  let value;
+
+  if (bn.gt(1)) {
+    value = bn.toFixed(2);
+  } else if (bn.gt(0.0001)) {
+    value = bn.toFixed(4);
+  } else {
+    value = '0.0001';
+  }
+
+  return formatTokenAmount(value);
+};

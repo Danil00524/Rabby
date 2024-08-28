@@ -17,6 +17,7 @@ import SkeletonInput from 'antd/lib/skeleton/Input';
 import { ellipsis } from '@/ui/utils/address';
 import BigNumber from 'bignumber.js';
 import { useTranslation } from 'react-i18next';
+import { findChain } from '@/utils/chain';
 
 const TokenCost = ({
   payToken,
@@ -82,7 +83,10 @@ const Transaction = forwardRef<HTMLDivElement, TransactionProps>(
     const targetDex = data?.dex_id;
     const txId = data?.tx_id;
     const chainItem = useMemo(
-      () => CHAINS_LIST.find((e) => e.serverId === data?.chain),
+      () =>
+        findChain({
+          serverId: data?.chain,
+        }),
       [data?.chain]
     );
     const chainName = chainItem?.name || '';
@@ -120,11 +124,11 @@ const Transaction = forwardRef<HTMLDivElement, TransactionProps>(
     return (
       <div
         className={clsx(
-          'bg-r-neutral-card-2 rounded-[6px] p-12 relative text-12 text-r-neutral-body'
+          'bg-r-neutral-card-1 rounded-[6px] p-12 relative text-12 text-r-neutral-body'
         )}
         ref={ref}
       >
-        <div className="flex justify-between items-center pb-8 border-b border-solid border-rabby-neutral-line">
+        <div className="flex justify-between items-center pb-8 border-b-[0.5px] border-solid border-rabby-neutral-line">
           <div className="flex items-center text-12 font-medium text-r-neutral-title-1">
             {isPending && (
               <TooltipWithMagnetArrow title={t('page.swap.pendingTip')}>
@@ -195,7 +199,7 @@ const Transaction = forwardRef<HTMLDivElement, TransactionProps>(
           </div>
         </div>
 
-        <div className="flex items-center text-12 text-r-neutral-foot pt-10 border-t border-solid border-rabby-neutral-line">
+        <div className="flex items-center text-12 text-r-neutral-foot pt-10 border-t-[0.5px] border-solid border-rabby-neutral-line">
           <span className="cursor-pointer" onClick={gotoScan}>
             {chainName}:{' '}
             <span className="underline underline-r-neutral-foot">
@@ -223,6 +227,7 @@ const Transaction = forwardRef<HTMLDivElement, TransactionProps>(
 const HistoryList = () => {
   const { txList, loading, loadingMore, ref } = useSwapHistory();
   const { t } = useTranslation();
+
   if (!loading && (!txList || !txList?.list?.length)) {
     return (
       <div className="w-full h-full flex flex-col items-center">
@@ -237,17 +242,27 @@ const HistoryList = () => {
     );
   }
 
-  console.log('txList?.list', txList?.list);
-
   return (
     <div className="overflow-y-auto max-h-[434px] space-y-[12px] pb-20">
-      {txList?.list?.map((swap, idx) => (
-        <Transaction
-          ref={txList?.list.length - 1 === idx ? ref : undefined}
-          key={`${swap.tx_id}-${swap.chain}`}
-          data={swap}
-        />
-      ))}
+      {txList?.list
+        ?.sort((a, b) => {
+          let aIndex = 0,
+            bIndex = 0;
+          if (a.status === 'Pending') {
+            aIndex = 1;
+          }
+          if (b.status === 'Pending') {
+            bIndex = 1;
+          }
+          return bIndex - aIndex;
+        })
+        ?.map((swap, idx) => (
+          <Transaction
+            ref={txList?.list.length - 1 === idx ? ref : undefined}
+            key={`${swap.tx_id}-${swap.chain}`}
+            data={swap}
+          />
+        ))}
       {((loading && !txList) || loadingMore) && (
         <>
           <SkeletonInput className="w-full h-[168px] rounded-[6px]" active />
@@ -279,6 +294,7 @@ export const SwapTxHistory = ({
       }}
       destroyOnClose
       isSupportDarkMode
+      isNew
     >
       <HistoryList />
     </Popup>

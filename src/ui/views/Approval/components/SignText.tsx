@@ -1,39 +1,40 @@
-import { Account } from 'background/service/preference';
-import React, { ReactNode, useEffect, useState, useRef, useMemo } from 'react';
-import { useScroll, useAsync } from 'react-use';
-import { Skeleton } from 'antd';
-import { useSize } from 'ahooks';
-import { useTranslation } from 'react-i18next';
+import { useEnterPassphraseModal } from '@/ui/hooks/useEnterPassphraseModal';
+import { useRabbyDispatch, useRabbySelector } from '@/ui/store';
+import { findChain } from '@/utils/chain';
+import { useLedgerDeviceConnected } from '@/ui/utils/ledger';
+import { matomoRequestEvent } from '@/utils/matomo-request';
+import { getKRCategoryByType } from '@/utils/transaction';
+import { ParseTextResponse } from '@rabby-wallet/rabby-api/dist/types';
 import { Result } from '@rabby-wallet/rabby-security-engine';
-import { Level } from '@rabby-wallet/rabby-security-engine/dist/rules';
+import {
+  Level,
+  defaultRules,
+} from '@rabby-wallet/rabby-security-engine/dist/rules';
+import { useSize, useDebounceFn } from 'ahooks';
+import { Skeleton } from 'antd';
+import { Account } from 'background/service/preference';
 import {
   INTERNAL_REQUEST_ORIGIN,
   KEYRING_CLASS,
   KEYRING_TYPE,
-  CHAINS,
   REJECT_SIGN_TEXT_KEYRINGS,
 } from 'consts';
-import { hex2Text, useApproval, useCommonPopupView, useWallet } from 'ui/utils';
-import { getKRCategoryByType } from '@/utils/transaction';
-import { matomoRequestEvent } from '@/utils/matomo-request';
-import { useLedgerDeviceConnected } from '@/ui/utils/ledger';
-import { FooterBar } from './FooterBar/FooterBar';
-import {
-  parseAction,
-  formatSecurityEngineCtx,
-  TextActionData,
-} from './TextActions/utils';
-import { useSecurityEngine } from 'ui/utils/securityEngine';
-import RuleDrawer from './SecurityEngine/RuleDrawer';
-import { useRabbyDispatch, useRabbySelector } from '@/ui/store';
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useAsync, useScroll, useThrottleFn } from 'react-use';
 import IconGnosis from 'ui/assets/walletlogo/safe.svg';
+import { hex2Text, useApproval, useCommonPopupView, useWallet } from 'ui/utils';
+import { useSecurityEngine } from 'ui/utils/securityEngine';
+import { FooterBar } from './FooterBar/FooterBar';
+import RuleDrawer from './SecurityEngine/RuleDrawer';
 import Actions from './TextActions';
-import { ParseTextResponse } from '@rabby-wallet/rabby-api/dist/types';
-import { isTestnetChainId } from '@/utils/chain';
-import { useSignPermissionCheck } from '../hooks/useSignPermissionCheck';
-import { useTestnetCheck } from '../hooks/useTestnetCheck';
+import {
+  TextActionData,
+  formatSecurityEngineCtx,
+  parseAction,
+} from './TextActions/utils';
 import { WaitingSignMessageComponent } from './map';
-import { useEnterPassphraseModal } from '@/ui/hooks/useEnterPassphraseModal';
+import stats from '@/stats';
 
 interface SignTextProps {
   data: string[];
@@ -48,6 +49,8 @@ interface SignTextProps {
 }
 
 const SignText = ({ params }: { params: SignTextProps }) => {
+  const renderStartAt = useRef(0);
+  const actionType = useRef('');
   const [, resolveApproval, rejectApproval] = useApproval();
   const wallet = useWallet();
   const { t } = useTranslation();
@@ -65,6 +68,8 @@ const SignText = ({ params }: { params: SignTextProps }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollRefSize = useSize(scrollRef);
   const scrollInfo = useScroll(scrollRef);
+  const securityEngineCtx = useRef<any>(null);
+  const logId = useRef('');
   const [footerShowShadow, setFooterShowShadow] = useState(false);
   const [engineResults, setEngineResults] = useState<Result[]>([]);
   const [
@@ -121,39 +126,20 @@ const SignText = ({ params }: { params: SignTextProps }) => {
     if (params.session.origin !== INTERNAL_REQUEST_ORIGIN) {
       const site = await wallet.getConnectedSite(params.session.origin);
       if (site) {
-        chainId = CHAINS[site.chain].id;
+        chainId =
+          findChain({
+            enum: site.chain,
+          })?.id || chainId;
       }
     }
     setChainId(chainId);
 
-    const apiProvider = isTestnetChainId(chainId)
-      ? wallet.testnetOpenapi
-      : wallet.openapi;
-
-    return await apiProvider.parseText({
+    return await wallet.openapi.parseText({
       text: signText,
       address: currentAccount!.address,
       origin: session.origin,
     });
   }, [signText, session]);
-
-  useSignPermissionCheck({
-    origin: params.session.origin,
-    chainId,
-    onOk: () => {
-      handleCancel();
-    },
-    onDisconnect: () => {
-      handleCancel();
-    },
-  });
-
-  useTestnetCheck({
-    chainId,
-    onOk: () => {
-      handleCancel();
-    },
-  });
 
   const report = async (
     action:
@@ -229,6 +215,7 @@ const SignText = ({ params }: { params: SignTextProps }) => {
       actionData: parsedActionData!,
       origin: session.origin,
     });
+    securityEngineCtx.current = ctx;
     const result = await executeEngine(ctx);
     setEngineResults(result);
   };
@@ -293,6 +280,8 @@ const SignText = ({ params }: { params: SignTextProps }) => {
     signText: string,
     sender: string
   ) => {
+    logId.current = textActionData.log_id;
+    dispatch.securityEngine.init();
     const currentAccount = await wallet.getCurrentAccount();
     if (
       currentAccount?.type &&
@@ -300,6 +289,7 @@ const SignText = ({ params }: { params: SignTextProps }) => {
     ) {
       rejectApproval('This address can not sign text message', false, true);
     }
+    actionType.current = textActionData?.action?.type || '';
     const parsed = parseAction(textActionData, signText, sender);
     setParsedActionData(parsed);
     const ctx = formatSecurityEngineCtx({
@@ -310,6 +300,17 @@ const SignText = ({ params }: { params: SignTextProps }) => {
     setEngineResults(result);
     setIsLoading(false);
   };
+
+  const { run: reportLogId } = useDebounceFn(
+    (rules) => {
+      wallet.openapi.postActionLog({
+        id: logId.current,
+        type: 'text',
+        rules,
+      });
+    },
+    { wait: 1000 }
+  );
 
   useEffect(() => {
     if (!loading) {
@@ -338,12 +339,52 @@ const SignText = ({ params }: { params: SignTextProps }) => {
   }, [rules]);
 
   useEffect(() => {
+    renderStartAt.current = Date.now();
     checkWachMode();
   }, []);
 
   useEffect(() => {
     report('createSignText');
   }, []);
+
+  useEffect(() => {
+    if (logId.current && !isLoading && securityEngineCtx.current) {
+      try {
+        const keys = Object.keys(securityEngineCtx.current);
+        const key: any = keys[0];
+        const notTriggeredRules = defaultRules.filter((rule) => {
+          return (
+            rule.requires.includes(key) &&
+            !engineResults.some((item) => item.id === rule.id)
+          );
+        });
+        reportLogId([
+          ...notTriggeredRules.map((rule) => ({
+            id: rule.id,
+            level: null,
+          })),
+          ...engineResults.map((result) => ({
+            id: result.id,
+            level: result.level,
+          })),
+        ]);
+      } catch (e) {
+        // IGNORE
+      }
+    }
+  }, [isLoading, engineResults]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      const duration = Date.now() - renderStartAt.current;
+      stats.report('signPageRenderTime', {
+        type: 'text',
+        actionType: actionType.current,
+        chain: '',
+        duration,
+      });
+    }
+  }, [isLoading]);
 
   return (
     <>
@@ -364,6 +405,7 @@ const SignText = ({ params }: { params: SignTextProps }) => {
             raw={hexData}
             message={signText}
             origin={params.session.origin}
+            originLogo={params.session.icon}
           />
         )}
       </div>
