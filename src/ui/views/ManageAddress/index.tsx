@@ -4,7 +4,7 @@ import { useRabbyDispatch } from '@/ui/store';
 import React, { useCallback, useState } from 'react';
 import { IDisplayedAccountWithBalance } from 'ui/models/accountToDisplay';
 import { ReactComponent as IconPlus } from '@/ui/assets/address/plus.svg';
-import { ReactComponent as RcIconShowSeedPhrase } from '@/ui/assets/address/show-seed-phrase.svg';
+//import { ReactComponent as RcIconShowSeedPhrase } from '@/ui/assets/address/show-seed-phrase.svg';
 import { ReactComponent as RcIconDelete } from '@/ui/assets/address/delete-current-color.svg';
 import { ReactComponent as RcIconPlusButton } from '@/ui/assets/import/plus.svg';
 
@@ -281,7 +281,7 @@ const ManageAddress = () => {
                       className="cursor-pointer text-r-neutral-body"
                     />
                   )}
-                  {isSeedPhrase && (
+                  {/*(isSeedPhrase && (
                     <RcIconShowSeedPhrase
                       className="cursor-pointer text-r-neutral-body"
                       onClick={() => {
@@ -293,7 +293,7 @@ const ManageAddress = () => {
                         }
                       }}
                     />
-                  )}
+                  )*/}
                   <RcIconDelete
                     className="cursor-pointer text-r-neutral-body hover:text-red-forbidden"
                     onClick={() => {
